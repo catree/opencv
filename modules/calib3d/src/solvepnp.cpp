@@ -46,6 +46,7 @@
 #include "epnp.h"
 #include "p3p.h"
 #include "ap3p.h"
+#include "ippe.hpp"
 #include "opencv2/calib3d/calib3d_c.h"
 
 #include <iostream>
@@ -137,7 +138,7 @@ bool solvePnP( InputArray _opoints, InputArray _ipoints,
     }
     else if (flags == SOLVEPNP_P3P)
     {
-        CV_Assert( npoints == 4);
+        CV_Assert(npoints == 4);
         Mat undistortedPoints;
         undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
         p3p P3Psolver(cameraMatrix);
@@ -149,7 +150,7 @@ bool solvePnP( InputArray _opoints, InputArray _ipoints,
     }
     else if (flags == SOLVEPNP_AP3P)
     {
-        CV_Assert( npoints == 4);
+        CV_Assert(npoints == 4);
         Mat undistortedPoints;
         undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
         ap3p P3Psolver(cameraMatrix);
@@ -168,6 +169,27 @@ bool solvePnP( InputArray _opoints, InputArray _ipoints,
                                      (c_distCoeffs.rows && c_distCoeffs.cols) ? &c_distCoeffs : 0,
                                      &c_rvec, &c_tvec, useExtrinsicGuess );
         result = true;
+    }
+    else if (flags == SOLVEPNP_IPPE)
+    {
+        Mat undistortedPoints;
+        undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
+
+        IPPE::PoseSolver poseSolver;
+        Mat rvec1, tvec1, rvec2, tvec2;
+        float reprojErr1, reprojErr2;
+        poseSolver.solveGeneric(opoints, undistortedPoints, noArray(), noArray(), rvec1, tvec1, reprojErr1, rvec2, tvec2, reprojErr2);
+
+        if (reprojErr1 < reprojErr2)
+        {
+            rvec1.copyTo(rvec);
+            tvec1.copyTo(tvec);
+        }
+        else
+        {
+            rvec2.copyTo(rvec);
+            tvec2.copyTo(tvec);
+        }
     }
     /*else if (flags == SOLVEPNP_DLS)
     {

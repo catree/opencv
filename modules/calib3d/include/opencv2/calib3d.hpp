@@ -237,6 +237,7 @@ enum { SOLVEPNP_ITERATIVE = 0,
        SOLVEPNP_DLS       = 3, //!< A Direct Least-Squares (DLS) Method for PnP  @cite hesch2011direct
        SOLVEPNP_UPNP      = 4, //!< Exhaustive Linearization for Robust Camera Pose and Focal Length Estimation @cite penate2013exhaustive
        SOLVEPNP_AP3P      = 5, //!< An Efficient Algebraic Solution to the Perspective-Three-Point Problem @cite Ke17
+       SOLVEPNP_IPPE      = 6, //TODO:
        SOLVEPNP_MAX_COUNT      //!< Used for count
 };
 
