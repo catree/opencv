@@ -178,7 +178,28 @@ bool solvePnP( InputArray _opoints, InputArray _ipoints,
         IPPE::PoseSolver poseSolver;
         Mat rvec1, tvec1, rvec2, tvec2;
         float reprojErr1, reprojErr2;
-        poseSolver.solveGeneric(opoints, undistortedPoints, noArray(), noArray(), rvec1, tvec1, reprojErr1, rvec2, tvec2, reprojErr2);
+        poseSolver.solveGeneric(opoints, undistortedPoints, cameraMatrix, distCoeffs, rvec1, tvec1, reprojErr1, rvec2, tvec2, reprojErr2);
+
+        if (reprojErr1 < reprojErr2)
+        {
+            rvec1.copyTo(rvec);
+            tvec1.copyTo(tvec);
+        }
+        else
+        {
+            rvec2.copyTo(rvec);
+            tvec2.copyTo(tvec);
+        }
+    }
+    else if (flags == SOLVEPNP_IPPE_SQUARE)
+    {
+        Mat undistortedPoints;
+        undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
+
+        IPPE::PoseSolver poseSolver;
+        Mat rvec1, tvec1, rvec2, tvec2;
+        float reprojErr1, reprojErr2;
+        poseSolver.solveSquare(opoints, undistortedPoints, cameraMatrix, distCoeffs, rvec1, tvec1, reprojErr1, rvec2, tvec2, reprojErr2);
 
         if (reprojErr1 < reprojErr2)
         {

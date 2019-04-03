@@ -41,11 +41,13 @@ public:
     PoseSolver();
 
     /**
-     * @brief                Finds the two possible poses of a planar object given a set of correspondences and their respective reprojection errors. The poses are sorted with the first having the lowest reprojection error.
-     * @param _objectPoints  Array of 4 or more coplanar object points defined in object coordinates. 1xN/Nx1 3-channel (float or double) where N is the number of points
-     * @param _imagePoints   Array of corresponding image points, 1xN/Nx1 2-channel. This can either be in pixel coordinates or normalized pixel coordinates.
-     * @param _cameraMatrix  Intrinsic camera matrix (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray()
-     * @param _distCoeffs    Intrinsic camera distortion vector (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray()
+     * @brief                Finds the two possible poses of a planar object given a set of correspondences and their respective reprojection errors.
+     *                       The poses are sorted with the first having the lowest reprojection error.
+     * @param _objectPoints  Array of 4 or more coplanar object points defined in object coordinates.
+     *                       1xN/Nx1 3-channel (float or double) where N is the number of points
+     * @param _imagePoints   Array of corresponding image points, 1xN/Nx1 2-channel. Points are in normalized pixel coordinates.
+     * @param _cameraMatrix  Intrinsic camera matrix (same definition as OpenCV).
+     * @param _distCoeffs    Intrinsic camera distortion vector (same definition as OpenCV).
      * @param _rvec1         First rotation solution (3x1 rotation vector)
      * @param _tvec1         First translation solution (3x1 vector)
      * @param reprojErr1     Reprojection error of first solution
@@ -72,28 +74,8 @@ public:
     void solveSquare(float squareLength, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs,
                      cv::OutputArray _rvec1, cv::OutputArray _tvec1, float& reprojErr1, cv::OutputArray _rvec2, cv::OutputArray _tvec2, float& reprojErr2);
 
-    /**
-     * @brief                   Generates the 4 object points of a square planar object
-     * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
-     * @param _objectPoints     Set of 4 object points (1x4 3-channel double)
-     */
-    void generateSquareObjectCorners3D(double squareLength, cv::OutputArray _objectPoints);
-
-    /**
-     * @brief                   Generates the 4 object points of a square planar object, without including the z-component (which is z=0 for all points).
-     * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
-     * @param _objectPoints     Set of 4 object points (1x4 2-channel double)
-     */
-    void generateSquareObjectCorners2D(double squareLength, cv::OutputArray _objectPoints);
-
-    /**
-     * @brief                   Computes the average depth of an object given its pose in camera coordinates
-     * @param objectPoints:     Object points defined in 3D object space
-     * @param rvec:             Rotation component of pose
-     * @param tvec:             Translation component of pose
-     * @return:                 average depth of the object
-     */
-     double meanSceneDepth(cv::InputArray objectPoints, cv::InputArray rvec, cv::InputArray tvec);
+    void solveSquare(cv::InputArray _objectPoints, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs,
+                     cv::OutputArray _rvec1, cv::OutputArray _tvec1, float& reprojErr1, cv::OutputArray _rvec2, cv::OutputArray _tvec2, float& reprojErr2);
 
 private:
     /**
@@ -207,6 +189,29 @@ private:
      * @param _R                        Rotation Mat: 3x3 (double)
      */
     void computeObjextSpaceRSvD(cv::InputArray _objectPointsZeroMean, cv::OutputArray _R);
+
+    /**
+     * @brief                   Generates the 4 object points of a square planar object
+     * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
+     * @param _objectPoints     Set of 4 object points (1x4 3-channel double)
+     */
+    void generateSquareObjectCorners3D(double squareLength, cv::OutputArray _objectPoints);
+
+    /**
+     * @brief                   Generates the 4 object points of a square planar object, without including the z-component (which is z=0 for all points).
+     * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
+     * @param _objectPoints     Set of 4 object points (1x4 2-channel double)
+     */
+    void generateSquareObjectCorners2D(double squareLength, cv::OutputArray _objectPoints);
+
+    /**
+     * @brief                   Computes the average depth of an object given its pose in camera coordinates
+     * @param objectPoints:     Object points defined in 3D object space
+     * @param rvec:             Rotation component of pose
+     * @param tvec:             Translation component of pose
+     * @return:                 average depth of the object
+     */
+     double meanSceneDepth(cv::InputArray objectPoints, cv::InputArray rvec, cv::InputArray tvec);
 
     //! a small constant used to test 'small' values close to zero.
     double IPPE_SMALL;

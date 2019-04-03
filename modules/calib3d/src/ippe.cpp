@@ -37,17 +37,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints,
                               OutputArray _rvec1, OutputArray _tvec1, float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
 {
     Mat normalizedImagePoints; //undistored version of imagePoints
-
-    if (_cameraMatrix.empty())
-    {
-        //there is no camera matrix and image points are given in normalized pixel coordinates.
-        _imagePoints.copyTo(normalizedImagePoints);
-    }
-    else
-    {
-        //undistort the image points (i.e. put them in normalized pixel coordinates):
-        undistortPoints(_imagePoints, normalizedImagePoints, _cameraMatrix, _distCoeffs);
-    }
+    _imagePoints.copyTo(normalizedImagePoints);
 
     //solve:
     Mat Ma, Mb;
@@ -144,16 +134,14 @@ void PoseSolver::solveCanonicalForm(InputArray _canonicalObjPoints, InputArray _
     Mb.at<double>(3, 3) = 1;
 
     //Compute the Jacobian J of the homography at (0,0):
-    double j00, j01, j10, j11, v0, v1;
-
-    j00 = H.at<double>(0, 0) - H.at<double>(2, 0) * H.at<double>(0, 2);
-    j01 = H.at<double>(0, 1) - H.at<double>(2, 1) * H.at<double>(0, 2);
-    j10 = H.at<double>(1, 0) - H.at<double>(2, 0) * H.at<double>(1, 2);
-    j11 = H.at<double>(1, 1) - H.at<double>(2, 1) * H.at<double>(1, 2);
+    double j00 = H.at<double>(0, 0) - H.at<double>(2, 0) * H.at<double>(0, 2);
+    double j01 = H.at<double>(0, 1) - H.at<double>(2, 1) * H.at<double>(0, 2);
+    double j10 = H.at<double>(1, 0) - H.at<double>(2, 0) * H.at<double>(1, 2);
+    double j11 = H.at<double>(1, 1) - H.at<double>(2, 1) * H.at<double>(1, 2);
 
     //Compute the transformation of (0,0) into the image:
-    v0 = H.at<double>(0, 2);
-    v1 = H.at<double>(1, 2);
+    double v0 = H.at<double>(0, 2);
+    double v1 = H.at<double>(1, 2);
 
     //compute the two rotation solutions:
     Mat Ra = Ma.colRange(0, 3).rowRange(0, 3);
@@ -207,6 +195,71 @@ void PoseSolver::solveSquare(float squareLength, InputArray _imagePoints, InputA
     Mat objectPoints3D;
     generateSquareObjectCorners3D(squareLength, objectPoints3D);
     sortPosesByReprojError(objectPoints3D, _imagePoints, _cameraMatrix, _distCoeffs, Ma, Mb, M1, M2, err1, err2);
+
+    //fill outputs
+    rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
+    rot2vec(M2.colRange(0, 3).rowRange(0, 3), _rvec2);
+
+    M1.colRange(3, 4).rowRange(0, 3).copyTo(_tvec1);
+    M2.colRange(3, 4).rowRange(0, 3).copyTo(_tvec2);
+}
+
+void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, InputArray _cameraMatrix, InputArray _distCoeffs,
+                             OutputArray _rvec1, OutputArray _tvec1, float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
+{
+    //allocate outputs:
+    _rvec1.create(3, 1, CV_64FC1);
+    _tvec1.create(3, 1, CV_64FC1);
+    _rvec2.create(3, 1, CV_64FC1);
+    _tvec2.create(3, 1, CV_64FC1);
+
+    Mat normalizedInputPoints; //undistored version of imagePoints
+    Mat objectPoints2D;
+
+    //generate the object points:
+    objectPoints2D.create(1, 4, CV_64FC2);
+    Mat objectPoints = _objectPoints.getMat();
+    double squareLength;
+    if (objectPoints.depth() == CV_32F)
+    {
+        objectPoints2D.ptr<Vec2d>(0)[0] = Vec2d(objectPoints.ptr<Vec3f>(0)[0](0), objectPoints.ptr<Vec3f>(0)[0](1));
+        objectPoints2D.ptr<Vec2d>(0)[1] = Vec2d(objectPoints.ptr<Vec3f>(0)[1](0), objectPoints.ptr<Vec3f>(0)[1](1));
+        objectPoints2D.ptr<Vec2d>(0)[2] = Vec2d(objectPoints.ptr<Vec3f>(0)[2](0), objectPoints.ptr<Vec3f>(0)[2](1));
+        objectPoints2D.ptr<Vec2d>(0)[3] = Vec2d(objectPoints.ptr<Vec3f>(0)[3](0), objectPoints.ptr<Vec3f>(0)[3](1));
+
+        squareLength = sqrt( (objectPoints.ptr<Vec3f>(0)[1](0) - objectPoints.ptr<Vec3f>(0)[0](0))*
+                             (objectPoints.ptr<Vec3f>(0)[1](0) - objectPoints.ptr<Vec3f>(0)[0](0)) +
+                             (objectPoints.ptr<Vec3f>(0)[1](1) - objectPoints.ptr<Vec3f>(0)[0](1))*
+                             (objectPoints.ptr<Vec3f>(0)[1](1) - objectPoints.ptr<Vec3f>(0)[0](1)) );
+    }
+    else
+    {
+        objectPoints2D.ptr<Vec2d>(0)[0] = Vec2d(objectPoints.ptr<Vec3d>(0)[0](0), objectPoints.ptr<Vec3d>(0)[0](1));
+        objectPoints2D.ptr<Vec2d>(0)[1] = Vec2d(objectPoints.ptr<Vec3d>(0)[1](0), objectPoints.ptr<Vec3d>(0)[1](1));
+        objectPoints2D.ptr<Vec2d>(0)[2] = Vec2d(objectPoints.ptr<Vec3d>(0)[2](0), objectPoints.ptr<Vec3d>(0)[2](1));
+        objectPoints2D.ptr<Vec2d>(0)[3] = Vec2d(objectPoints.ptr<Vec3d>(0)[3](0), objectPoints.ptr<Vec3d>(0)[3](1));
+
+        squareLength = sqrt( (objectPoints.ptr<Vec3d>(0)[1](0) - objectPoints.ptr<Vec3d>(0)[0](0))*
+                             (objectPoints.ptr<Vec3d>(0)[1](0) - objectPoints.ptr<Vec3d>(0)[0](0)) +
+                             (objectPoints.ptr<Vec3d>(0)[1](1) - objectPoints.ptr<Vec3d>(0)[0](1))*
+                             (objectPoints.ptr<Vec3d>(0)[1](1) - objectPoints.ptr<Vec3d>(0)[0](1)) );
+    }
+
+    Mat H; //homography from canonical object points to normalized pixels
+    _imagePoints.copyTo(normalizedInputPoints);
+
+    //compute H
+    homographyFromSquarePoints(normalizedInputPoints, squareLength / 2.0, H);
+
+    //now solve
+    Mat Ma, Mb;
+    solveCanonicalForm(objectPoints2D, normalizedInputPoints, H, Ma, Mb);
+
+    //sort poses according to reprojection error:
+    Mat M1, M2;
+//    Mat objectPoints3D;
+//    generateSquareObjectCorners3D(squareLength, objectPoints3D);
+    sortPosesByReprojError(_objectPoints, _imagePoints, _cameraMatrix, _distCoeffs, Ma, Mb, M1, M2, err1, err2);
 
     //fill outputs
     rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
@@ -675,21 +728,7 @@ void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoin
     Mat r;
     rot2vec(_M.getMat().colRange(0, 3).rowRange(0, 3), r);
 
-    if (_cameraMatrix.empty())
-    {
-        //there is no camera matrix and image points are in normalized pixel coordinates
-        Mat K(3, 3, CV_64FC1);
-        K.setTo(0);
-        K.at<double>(0, 0) = 1;
-        K.at<double>(1, 1) = 1;
-        K.at<double>(2, 2) = 1;
-        Mat kc;
-        projectPoints(_objectPoints, r, _M.getMat().colRange(3, 4).rowRange(0, 3), K, kc, projectedPoints);
-    }
-    else
-    {
-        projectPoints(_objectPoints, r, _M.getMat().colRange(3, 4).rowRange(0, 3), _cameraMatrix, _distCoeffs, projectedPoints);
-    }
+    projectPoints(_objectPoints, r, _M.getMat().colRange(3, 4).rowRange(0, 3), _cameraMatrix, _distCoeffs, projectedPoints);
 
     err = 0;
     int n = _objectPoints.rows() * _objectPoints.cols();
