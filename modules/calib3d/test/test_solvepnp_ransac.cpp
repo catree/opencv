@@ -61,8 +61,8 @@ public:
     ~CV_solvePnPRansac_Test() {}
 protected:
     void generate3DPointCloud(vector<Point3f>& points,
-        Point3f pmin = Point3f(-1, -1, 5),
-        Point3f pmax = Point3f(1, 1, 10))
+                              Point3f pmin = Point3f(-1, -1, 5),
+                              Point3f pmax = Point3f(1, 1, 10))
     {
         RNG rng = cv::theRNG(); // fix the seed to use "fixed" input 3D points
 
@@ -104,7 +104,7 @@ protected:
         for (int i = 0; i < 3; i++)
         {
             rvec.at<double>(i,0) = rng.uniform(minVal, maxVal);
-            tvec.at<double>(i,0) = rng.uniform(minVal, maxVal/10);
+            tvec.at<double>(i,0) = (i == 2) ? rng.uniform(minVal*10, maxVal) : rng.uniform(-maxVal, maxVal);
         }
     }
 
@@ -177,10 +177,39 @@ protected:
                         method, totalTestsCount - successfulTestsCount, totalTestsCount, maxError, mode);
                     ts->set_failed_test_info(cvtest::TS::FAIL_BAD_ACCURACY);
                 }
-                cout << "mode: " << mode << ", method: " << method << " -> "
+                cout << "mode: " << printMode(mode) << ", method: " << printMethod(method) << " -> "
                      << ((double)successfulTestsCount / totalTestsCount) * 100 << "%"
                      << " (err < " << maxError << ")" << endl;
             }
+        }
+    }
+    std::string printMode(int mode)
+    {
+        switch (mode) {
+        case 0:
+            return "no distortion";
+        case 1:
+        default:
+            return "distorsion";
+        }
+    }
+    std::string printMethod(int method)
+    {
+        switch (method) {
+        case 0:
+            return "SOLVEPNP_ITERATIVE";
+        case 1:
+            return "SOLVEPNP_EPNP";
+        case 2:
+            return "SOLVEPNP_P3P";
+        case 3:
+            return "SOLVEPNP_DLS (remaped to SOLVEPNP_EPNP)";
+        case 4:
+            return "SOLVEPNP_UPNP (remaped to SOLVEPNP_EPNP)";
+        case 5:
+            return "SOLVEPNP_AP3P";
+        default:
+            return "Unknown value";
         }
     }
     double eps[SOLVEPNP_MAX_COUNT];
@@ -212,6 +241,8 @@ protected:
         generateCameraMatrix(intrinsics, rng);
         if (method == SOLVEPNP_DLS)
         {
+            //DLS is remaped to EPnP
+            //fx == fy for EPnP is not needed but does not hurt
             intrinsics.at<double>(1,1) = intrinsics.at<double>(0,0);
         }
         if (mode == 0)
@@ -232,6 +263,8 @@ protected:
                 opoints = std::vector<Point3f>(points.begin(), points.begin()+4);
                 break;
             case SOLVEPNP_UPNP:
+                //UPnP is broken and is remaped to EPnP
+                //Truncating to 50 points for EPnP is not needed but does not hurt
                 opoints = std::vector<Point3f>(points.begin(), points.begin()+50);
                 break;
             default:
@@ -367,6 +400,7 @@ TEST(Calib3d_SolvePnPRansac, concurrency)
     camera_mat.at<float>(1, 0) = 0.f;
     camera_mat.at<float>(2, 0) = 0.f;
     camera_mat.at<float>(2, 1) = 0.f;
+    camera_mat.at<float>(2, 2) = 1.f;
 
     Mat dist_coef(1, 8, CV_32F, cv::Scalar::all(0));
 
@@ -420,7 +454,7 @@ TEST(Calib3d_SolvePnPRansac, input_type)
 {
     const int numPoints = 10;
     Matx33d intrinsics(5.4794130238156129e+002, 0., 2.9835545700043139e+002, 0.,
-        5.4817724002728005e+002, 2.3062194051986233e+002, 0., 0., 1.);
+                       5.4817724002728005e+002, 2.3062194051986233e+002, 0., 0., 1.);
 
     std::vector<cv::Point3f> points3d;
     std::vector<cv::Point2f> points2d;
@@ -474,7 +508,7 @@ TEST(Calib3d_SolvePnP, double_support)
         points2d.push_back(cv::Point2d(-i, i));
         points2dF.push_back(cv::Point2d(-i, i));
     }
-    Mat R,t, RF, tF;
+    Mat R, t, RF, tF;
     vector<int> inliers;
 
     solvePnPRansac(points3dF, points2dF, intrinsics, cv::Mat(), RF, tF, true, 100, 8.f, 0.999, inliers, cv::SOLVEPNP_P3P);
@@ -576,6 +610,75 @@ TEST(Calib3d_SolvePnP, iterativeInitialGuess3pts)
 
         Mat rvec_est = (Mat_<float>(3,1) << -0.5f, 0.2f, 0.2f);
         Mat tvec_est = (Mat_<float>(3,1) << 0.0f, 0.2f, 1.0f);
+
+        solvePnP(p3d, p2d, intrinsics, noArray(), rvec_est, tvec_est, true, SOLVEPNP_ITERATIVE);
+
+        std::cout << "rvec_ground_truth: " << rvec_ground_truth.t() << std::endl;
+        std::cout << "rvec_est: " << rvec_est.t() << std::endl;
+        std::cout << "tvec_ground_truth: " << tvec_ground_truth.t() << std::endl;
+        std::cout << "tvec_est: " << tvec_est.t() << std::endl;
+
+        EXPECT_LE(cvtest::norm(rvec_ground_truth, rvec_est, NORM_INF), 1e-6);
+        EXPECT_LE(cvtest::norm(tvec_ground_truth, tvec_est, NORM_INF), 1e-6);
+    }
+}
+
+TEST(Calib3d_SolvePnP, iterativeInitialGuess)
+{
+    {
+        Matx33d intrinsics(605.4, 0.0, 317.35,
+                           0.0, 601.2, 242.63,
+                           0.0, 0.0, 1.0);
+
+        double L = 0.1;
+        vector<Point3d> p3d;
+        p3d.push_back(Point3d(-L, -L, 0.0));
+        p3d.push_back(Point3d(L, -L, 0.0));
+        p3d.push_back(Point3d(L, L, 0.0));
+        p3d.push_back(Point3d(-L, L, L/2));
+        p3d.push_back(Point3d(0, 0, -L/2));
+
+        Mat rvec_ground_truth = (Mat_<double>(3,1) << 0.3, -0.2, 0.75);
+        Mat tvec_ground_truth = (Mat_<double>(3,1) << 0.15, -0.2, 1.5);
+
+        vector<Point2d> p2d;
+        projectPoints(p3d, rvec_ground_truth, tvec_ground_truth, intrinsics, noArray(), p2d);
+
+        Mat rvec_est = (Mat_<double>(3,1) << 0.1, -0.1, 0.1);
+        Mat tvec_est = (Mat_<double>(3,1) << 0.0, -0.5, 1.0);
+
+        solvePnP(p3d, p2d, intrinsics, noArray(), rvec_est, tvec_est, true, SOLVEPNP_ITERATIVE);
+
+        std::cout << "rvec_ground_truth: " << rvec_ground_truth.t() << std::endl;
+        std::cout << "rvec_est: " << rvec_est.t() << std::endl;
+        std::cout << "tvec_ground_truth: " << tvec_ground_truth.t() << std::endl;
+        std::cout << "tvec_est: " << tvec_est.t() << std::endl;
+
+        EXPECT_LE(cvtest::norm(rvec_ground_truth, rvec_est, NORM_INF), 1e-6);
+        EXPECT_LE(cvtest::norm(tvec_ground_truth, tvec_est, NORM_INF), 1e-6);
+    }
+
+    {
+        Matx33f intrinsics(605.4f, 0.0f, 317.35f,
+                           0.0f, 601.2f, 242.63f,
+                           0.0f, 0.0f, 1.0f);
+
+        float L = 0.1f;
+        vector<Point3f> p3d;
+        p3d.push_back(Point3f(-L, -L, 0.0f));
+        p3d.push_back(Point3f(L, -L, 0.0f));
+        p3d.push_back(Point3f(L, L, 0.0f));
+        p3d.push_back(Point3f(-L, L, L/2));
+        p3d.push_back(Point3f(0, 0, -L/2));
+
+        Mat rvec_ground_truth = (Mat_<float>(3,1) << -0.75f, 0.4f, 0.34f);
+        Mat tvec_ground_truth = (Mat_<float>(3,1) << -0.15f, 0.35f, 1.58f);
+
+        vector<Point2f> p2d;
+        projectPoints(p3d, rvec_ground_truth, tvec_ground_truth, intrinsics, noArray(), p2d);
+
+        Mat rvec_est = (Mat_<float>(3,1) << -0.1f, 0.1f, 0.1f);
+        Mat tvec_est = (Mat_<float>(3,1) << 0.0f, 0.0f, 1.0f);
 
         solvePnP(p3d, p2d, intrinsics, noArray(), rvec_est, tvec_est, true, SOLVEPNP_ITERATIVE);
 
