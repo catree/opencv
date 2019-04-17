@@ -44,10 +44,93 @@
 
 namespace opencv_test { namespace {
 
+//Statistics Helpers
+struct ErrorInfo
+{
+    ErrorInfo(double errT, double errR) : errorTrans(errT), errorRot(errR)
+    {
+    }
+
+    bool operator<(const ErrorInfo& e) const
+    {
+        return sqrt(errorTrans*errorTrans + errorRot*errorRot) <
+                sqrt(e.errorTrans*e.errorTrans + e.errorRot*e.errorRot);
+    }
+
+    double errorTrans;
+    double errorRot;
+};
+
+//Try to find the translation and rotation thresholds to achieve a predefined percentage of success.
+//Since a success is defined by error_trans < trans_thresh && error_rot < rot_thresh
+//this just gives an idea of the values to use
+static void findThreshold(const std::vector<double>& v_trans, const std::vector<double>& v_rot, double percentage,
+                          double& transThresh, double& rotThresh)
+{
+    if (v_trans.empty() || v_rot.empty() || v_trans.size() != v_rot.size())
+    {
+        transThresh = -1;
+        rotThresh = -1;
+        return;
+    }
+
+    std::vector<ErrorInfo> error_info;
+    error_info.reserve(v_trans.size());
+    for (size_t i = 0; i < v_trans.size(); i++)
+    {
+        error_info.push_back(ErrorInfo(v_trans[i], v_rot[i]));
+    }
+
+    std::sort(error_info.begin(), error_info.end());
+    size_t idx = static_cast<size_t>(error_info.size() * percentage);
+    transThresh = error_info[idx].errorTrans;
+    rotThresh = error_info[idx].errorRot;
+}
+
+static double getMax(const std::vector<double>& v)
+{
+    return *std::max_element(v.begin(), v.end());
+}
+
+static double getMean(const std::vector<double>& v)
+{
+    if (v.empty())
+    {
+        return 0.0;
+    }
+
+    double sum = std::accumulate(v.begin(), v.end(), 0.0);
+    return sum / v.size();
+}
+
+static double getMedian(const std::vector<double>& v)
+{
+    if (v.empty())
+    {
+        return 0.0;
+    }
+
+    std::vector<double> v_copy = v;
+    size_t size = v_copy.size();
+
+    size_t n = size / 2;
+    std::nth_element(v_copy.begin(), v_copy.begin() + n, v_copy.end());
+    double val_n = v_copy[n];
+
+    if (size % 2 == 1)
+    {
+        return val_n;
+    } else
+    {
+        std::nth_element(v_copy.begin(), v_copy.begin() + n - 1, v_copy.end());
+        return 0.5 * (val_n + v_copy[n - 1]);
+    }
+}
+
 class CV_solvePnPRansac_Test : public cvtest::BaseTest
 {
 public:
-    CV_solvePnPRansac_Test()
+    CV_solvePnPRansac_Test(bool planar_=false, bool planarTag_=false) : planar(planar_), planarTag(planarTag_)
     {
         eps[SOLVEPNP_ITERATIVE] = 1.0e-2;
         eps[SOLVEPNP_EPNP] = 1.0e-2;
@@ -72,6 +155,44 @@ protected:
             float _y = rng.uniform(pmin.y, pmax.y);
             float _z = rng.uniform(pmin.z, pmax.z);
             points[i] = Point3f(_x, _y, _z);
+        }
+    }
+
+    void generatePlanarPointCloud(vector<Point3f>& points,
+                                  Point2f pmin = Point2f(-1, -1),
+                                  Point2f pmax = Point2f(1, 1))
+    {
+        RNG rng = cv::theRNG(); // fix the seed to use "fixed" input 3D points
+
+        if (planarTag)
+        {
+            const float squareLength_2 = rng.uniform(0.01f, pmax.x) / 2;
+            points.clear();
+            points.push_back(Point3f(-squareLength_2, squareLength_2, 0));
+            points.push_back(Point3f(squareLength_2, squareLength_2, 0));
+            points.push_back(Point3f(squareLength_2, -squareLength_2, 0));
+            points.push_back(Point3f(-squareLength_2, -squareLength_2, 0));
+        }
+        else
+        {
+            Mat rvec_double, tvec_double;
+            generatePose(rvec_double, tvec_double, rng);
+
+            Mat rvec, tvec, R;
+            rvec_double.convertTo(rvec, CV_32F);
+            tvec_double.convertTo(tvec, CV_32F);
+            cv::Rodrigues(rvec, R);
+
+            for (size_t i = 0; i < points.size(); i++)
+            {
+                float x = rng.uniform(pmin.x, pmax.x);
+                float y = rng.uniform(pmin.y, pmax.y);
+                float z = 0;
+
+                Matx31f pt(x, y, z);
+                Mat pt_trans = R * pt + tvec;
+                points[i] = Point3f(pt_trans.at<float>(0,0), pt_trans.at<float>(1,0), pt_trans.at<float>(2,0));
+            }
         }
     }
 
@@ -101,6 +222,7 @@ protected:
         const double maxVal = 1.0;
         rvec.create(3, 1, CV_64FC1);
         tvec.create(3, 1, CV_64FC1);
+
         for (int i = 0; i < 3; i++)
         {
             rvec.at<double>(i,0) = rng.uniform(minVal, maxVal);
@@ -108,18 +230,33 @@ protected:
         }
     }
 
-    virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, const double* epsilon, double& maxError)
+    virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, double& errorTrans, double& errorRot)
     {
+        if ((!planar && method == SOLVEPNP_IPPE) || method == SOLVEPNP_IPPE_SQUARE)
+        {
+            return true;
+        }
+
         Mat rvec, tvec;
         vector<int> inliers;
         Mat trueRvec, trueTvec;
         Mat intrinsics, distCoeffs;
         generateCameraMatrix(intrinsics, rng);
-        if (method == 4) intrinsics.at<double>(1,1) = intrinsics.at<double>(0,0);
+        //UPnP is mapped to EPnP
+        //Uncomment this when UPnP is fixed
+//        if (method == SOLVEPNP_UPNP)
+//        {
+//            intrinsics.at<double>(1,1) = intrinsics.at<double>(0,0);
+//        }
         if (mode == 0)
+        {
             distCoeffs = Mat::zeros(4, 1, CV_64FC1);
+        }
         else
+        {
             generateDistCoeffs(distCoeffs, rng);
+        }
+
         generatePose(trueRvec, trueTvec, rng);
 
         vector<Point2f> projectedPoints;
@@ -138,11 +275,9 @@ protected:
         bool isTestSuccess = inliers.size() >= points.size()*0.95;
 
         double rvecDiff = cvtest::norm(rvec, trueRvec, NORM_L2), tvecDiff = cvtest::norm(tvec, trueTvec, NORM_L2);
-        isTestSuccess = isTestSuccess && rvecDiff < epsilon[method] && tvecDiff < epsilon[method];
-        double error = rvecDiff > tvecDiff ? rvecDiff : tvecDiff;
-        //cout << error << " " << inliers.size() << " " << eps[method] << endl;
-        if (error > maxError)
-            maxError = error;
+        isTestSuccess = isTestSuccess && rvecDiff < eps[method] && tvecDiff < eps[method];
+        errorTrans = tvecDiff;
+        errorRot = rvecDiff;
 
         return isTestSuccess;
     }
@@ -152,35 +287,69 @@ protected:
         ts->set_failed_test_info(cvtest::TS::OK);
 
         vector<Point3f> points, points_dls;
-        points.resize(pointsCount);
-        generate3DPointCloud(points);
+        points.resize(static_cast<size_t>(pointsCount));
+
+        if (planar || planarTag)
+        {
+            generatePlanarPointCloud(points);
+        }
+        else
+        {
+            generate3DPointCloud(points);
+        }
 
         RNG rng = ts->get_rng();
-
 
         for (int mode = 0; mode < 2; mode++)
         {
             for (int method = 0; method < SOLVEPNP_MAX_COUNT; method++)
             {
-                double maxError = 0;
+                //To get the same input for each methods
+                RNG rngCopy = rng;
+                std::vector<double> vec_errorTrans, vec_errorRot;
+                vec_errorTrans.reserve(static_cast<size_t>(totalTestsCount));
+                vec_errorRot.reserve(static_cast<size_t>(totalTestsCount));
+
                 int successfulTestsCount = 0;
                 for (int testIndex = 0; testIndex < totalTestsCount; testIndex++)
                 {
-                    if (runTest(rng, mode, method, points, eps, maxError))
+                    double errorTrans, errorRot;
+                    if (runTest(rngCopy, mode, method, points, errorTrans, errorRot))
                     {
                         successfulTestsCount++;
                     }
+                    vec_errorTrans.push_back(errorTrans);
+                    vec_errorRot.push_back(errorRot);
                 }
+
+                double maxErrorTrans = getMax(vec_errorTrans);
+                double maxErrorRot = getMax(vec_errorRot);
+                double meanErrorTrans = getMean(vec_errorTrans);
+                double meanErrorRot = getMean(vec_errorRot);
+                double medianErrorTrans = getMedian(vec_errorTrans);
+                double medianErrorRot = getMedian(vec_errorRot);
+
                 if (successfulTestsCount < 0.7*totalTestsCount)
                 {
-                    ts->printf( cvtest::TS::LOG, "Invalid accuracy for method %d, failed %d tests from %d, maximum error equals %f, distortion mode equals %d\n",
-                        method, totalTestsCount - successfulTestsCount, totalTestsCount, maxError, mode);
+                    ts->printf(cvtest::TS::LOG, "Invalid accuracy for %s, failed %d tests from %d, %s, "
+                                                "maxErrT: %f, maxErrR: %f, "
+                                                "meanErrT: %f, meanErrR: %f, "
+                                                "medErrT: %f, medErrR: %f\n",
+                               printMethod(method).c_str(), totalTestsCount - successfulTestsCount, totalTestsCount, printMode(mode).c_str(),
+                               maxErrorTrans, maxErrorRot, meanErrorTrans, meanErrorRot, medianErrorTrans, medianErrorRot);
                     ts->set_failed_test_info(cvtest::TS::FAIL_BAD_ACCURACY);
                 }
                 cout << "mode: " << printMode(mode) << ", method: " << printMethod(method) << " -> "
                      << ((double)successfulTestsCount / totalTestsCount) * 100 << "%"
-                     << " (err < " << maxError << ")" << endl;
+                     << " (maxErrT: " << maxErrorTrans << ", maxErrR: " << maxErrorRot
+                     << ", meanErrT: " << meanErrorTrans << ", meanErrR: " << meanErrorRot
+                     << ", medErrT: " << medianErrorTrans << ", medErrR: " << medianErrorRot << ")" << endl;
+                double transThres, rotThresh;
+                findThreshold(vec_errorTrans, vec_errorRot, 0.7, transThres, rotThresh);
+                cout << "approximate translation threshold for 0.7: " << transThres
+                     << ", approximate rotation threshold for 0.7: " << rotThresh << endl;
             }
+            cout << endl;
         }
     }
     std::string printMode(int mode)
@@ -208,6 +377,10 @@ protected:
             return "SOLVEPNP_UPNP (remaped to SOLVEPNP_EPNP)";
         case 5:
             return "SOLVEPNP_AP3P";
+        case 6:
+            return "SOLVEPNP_IPPE";
+        case 7:
+            return "SOLVEPNP_IPPE_SQUARE";
         default:
             return "Unknown value";
         }
@@ -215,36 +388,178 @@ protected:
     double eps[SOLVEPNP_MAX_COUNT];
     int totalTestsCount;
     int pointsCount;
+    bool planar;
+    bool planarTag;
 };
 
 class CV_solvePnP_Test : public CV_solvePnPRansac_Test
 {
 public:
-    CV_solvePnP_Test()
+    CV_solvePnP_Test(bool planar_=false, bool planarTag_=false) : CV_solvePnPRansac_Test(planar_, planarTag_)
     {
         eps[SOLVEPNP_ITERATIVE] = 1.0e-6;
         eps[SOLVEPNP_EPNP] = 1.0e-6;
         eps[SOLVEPNP_P3P] = 2.0e-4;
         eps[SOLVEPNP_AP3P] = 1.0e-4;
-        eps[SOLVEPNP_DLS] = 1.0e-4;
-        eps[SOLVEPNP_UPNP] = 1.0e-4;
+        eps[SOLVEPNP_DLS] = 1.0e-6; //DLS is remapped to EPnP, so we use the same threshold
+        eps[SOLVEPNP_UPNP] = 1.0e-6; //DLS is remapped to EPnP, so we use the same threshold
+        eps[SOLVEPNP_IPPE] = 1.0e-4;
+        eps[SOLVEPNP_IPPE_SQUARE] = 1.0e-4;
+
         totalTestsCount = 1000;
+
+        if (planar || planarTag)
+        {
+            if (planarTag)
+            {
+                pointsCount = 4;
+            }
+            else
+            {
+                pointsCount = 30;
+            }
+        }
+        else
+        {
+            pointsCount = 500;
+        }
     }
 
     ~CV_solvePnP_Test() {}
 protected:
-    virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, const double* epsilon, double& maxError)
+    virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, double& errorTrans, double& errorRot)
     {
-        Mat rvec, tvec;
+        if ((!planar && (method == SOLVEPNP_IPPE || method == SOLVEPNP_IPPE_SQUARE)) ||
+            (!planarTag && method == SOLVEPNP_IPPE_SQUARE))
+        {
+            errorTrans = -1;
+            errorRot = -1;
+            return true;
+        }
+
+        //Tune thresholds...
+        double epsilon_trans[SOLVEPNP_MAX_COUNT];
+        memcpy(epsilon_trans, eps, SOLVEPNP_MAX_COUNT * sizeof(*epsilon_trans));
+
+        double epsilon_rot[SOLVEPNP_MAX_COUNT];
+        memcpy(epsilon_rot, eps, SOLVEPNP_MAX_COUNT * sizeof(*epsilon_rot));
+
+        if (planar)
+        {
+            if (mode == 0)
+            {
+                epsilon_trans[SOLVEPNP_EPNP] = 1.0e-2;
+                epsilon_trans[SOLVEPNP_DLS] = 1.0e-2;
+                epsilon_trans[SOLVEPNP_UPNP] = 1.0e-2;
+                epsilon_trans[SOLVEPNP_P3P] = 1e-3;
+
+                epsilon_rot[SOLVEPNP_EPNP] = 1.0e-2;
+                epsilon_rot[SOLVEPNP_DLS] = 1.0e-2;
+                epsilon_rot[SOLVEPNP_UPNP] = 1.0e-2;
+                epsilon_rot[SOLVEPNP_P3P] = 1e-3;
+            }
+            else
+            {
+                epsilon_trans[SOLVEPNP_ITERATIVE] = 0.5;
+                epsilon_trans[SOLVEPNP_EPNP] = 0.6;
+                epsilon_trans[SOLVEPNP_DLS] = 0.6;
+                epsilon_trans[SOLVEPNP_UPNP] = 0.6;
+                epsilon_trans[SOLVEPNP_P3P] = 1e-2;
+                epsilon_trans[SOLVEPNP_IPPE] = 1e-1;
+
+                epsilon_rot[SOLVEPNP_ITERATIVE] = 0.5;
+                epsilon_rot[SOLVEPNP_EPNP] = 0.6;
+                epsilon_rot[SOLVEPNP_DLS] = 0.6;
+                epsilon_rot[SOLVEPNP_UPNP] = 0.6;
+                epsilon_rot[SOLVEPNP_P3P] = 1e-2;
+                epsilon_rot[SOLVEPNP_IPPE] = 2e-1;
+            }
+        }
+
         Mat trueRvec, trueTvec;
         Mat intrinsics, distCoeffs;
         generateCameraMatrix(intrinsics, rng);
-        if (method == SOLVEPNP_DLS)
+        //UPnP is mapped to EPnP
+        //Uncomment this when UPnP is fixed
+//        if (method == SOLVEPNP_UPNP)
+//        {
+//            intrinsics.at<double>(1,1) = intrinsics.at<double>(0,0);
+//        }
+        if (mode == 0)
         {
-            //DLS is remaped to EPnP
-            //fx == fy for EPnP is not needed but does not hurt
-            intrinsics.at<double>(1,1) = intrinsics.at<double>(0,0);
+            distCoeffs = Mat::zeros(4, 1, CV_64FC1);
         }
+        else
+        {
+            generateDistCoeffs(distCoeffs, rng);
+        }
+
+        generatePose(trueRvec, trueTvec, rng);
+
+        std::vector<Point3f> opoints;
+        switch(method)
+        {
+            case SOLVEPNP_P3P:
+            case SOLVEPNP_AP3P:
+                opoints = std::vector<Point3f>(points.begin(), points.begin()+4);
+                break;
+                //UPnP is mapped to EPnP
+                //Uncomment this when UPnP is fixed
+//            case SOLVEPNP_UPNP:
+//                if (points.size() > 50)
+//                {
+//                    opoints = std::vector<Point3f>(points.begin(), points.begin()+50);
+//                }
+//                else
+//                {
+//                    opoints = points;
+//                }
+//                break;
+            default:
+                opoints = points;
+                break;
+        }
+
+        vector<Point2f> projectedPoints;
+        projectedPoints.resize(opoints.size());
+        projectPoints(opoints, trueRvec, trueTvec, intrinsics, distCoeffs, projectedPoints);
+
+        Mat rvec, tvec;
+        bool isEstimateSuccess = solvePnP(opoints, projectedPoints, intrinsics, distCoeffs, rvec, tvec, false, method);
+
+        if (!isEstimateSuccess)
+        {
+            return false;
+        }
+
+        double rvecDiff = cvtest::norm(rvec, trueRvec, NORM_L2), tvecDiff = cvtest::norm(tvec, trueTvec, NORM_L2);
+        bool isTestSuccess = rvecDiff < epsilon_rot[method] && tvecDiff < epsilon_trans[method];
+
+        errorTrans = tvecDiff;
+        errorRot = rvecDiff;
+
+        return isTestSuccess;
+    }
+};
+
+class CV_solveP3P_Test : public CV_solvePnPRansac_Test
+{
+public:
+    CV_solveP3P_Test()
+    {
+        eps[SOLVEPNP_P3P] = 2.0e-4;
+        eps[SOLVEPNP_AP3P] = 1.0e-4;
+        totalTestsCount = 1000;
+    }
+
+    ~CV_solveP3P_Test() {}
+protected:
+    virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, double& errorTrans, double& errorRot)
+    {
+        std::vector<Mat> rvecs, tvecs;
+        Mat trueRvec, trueTvec;
+        Mat intrinsics, distCoeffs;
+        generateCameraMatrix(intrinsics, rng);
         if (mode == 0)
         {
             distCoeffs = Mat::zeros(4, 1, CV_64FC1);
@@ -256,136 +571,102 @@ protected:
         generatePose(trueRvec, trueTvec, rng);
 
         std::vector<Point3f> opoints;
-        switch(method)
-        {
-            case SOLVEPNP_P3P:
-            case SOLVEPNP_AP3P:
-                opoints = std::vector<Point3f>(points.begin(), points.begin()+4);
-                break;
-            case SOLVEPNP_UPNP:
-                //UPnP is broken and is remaped to EPnP
-                //Truncating to 50 points for EPnP is not needed but does not hurt
-                opoints = std::vector<Point3f>(points.begin(), points.begin()+50);
-                break;
-            default:
-                opoints = points;
-                break;
-        }
+        opoints = std::vector<Point3f>(points.begin(), points.begin()+3);
 
         vector<Point2f> projectedPoints;
         projectedPoints.resize(opoints.size());
         projectPoints(opoints, trueRvec, trueTvec, intrinsics, distCoeffs, projectedPoints);
 
-        bool isEstimateSuccess = solvePnP(opoints, projectedPoints, intrinsics, distCoeffs, rvec, tvec, false, method);
-        if (isEstimateSuccess == false)
+        int num_of_solutions = solveP3P(opoints, projectedPoints, intrinsics, distCoeffs, rvecs, tvecs, method);
+        if (num_of_solutions != (int) rvecs.size() || num_of_solutions != (int) tvecs.size() || num_of_solutions == 0)
         {
-            return isEstimateSuccess;
+            return false;
         }
 
-        double rvecDiff = cvtest::norm(rvec, trueRvec, NORM_L2), tvecDiff = cvtest::norm(tvec, trueTvec, NORM_L2);
-        bool isTestSuccess = rvecDiff < epsilon[method] && tvecDiff < epsilon[method];
+        bool isTestSuccess = false;
+        for (unsigned int i = 0; i < rvecs.size() && !isTestSuccess; ++i) {
+            double rvecDiff = cvtest::norm(rvecs[i], trueRvec, NORM_L2);
+            double tvecDiff = cvtest::norm(tvecs[i], trueTvec, NORM_L2);
+            isTestSuccess = rvecDiff < eps[method] && tvecDiff < eps[method];
 
-        double error = rvecDiff > tvecDiff ? rvecDiff : tvecDiff;
-        if (error > maxError)
-        {
-            maxError = error;
+            errorTrans = std::min(errorTrans, tvecDiff);
+            errorRot = std::min(errorRot, rvecDiff);
         }
 
         return isTestSuccess;
     }
-};
 
-class CV_solveP3P_Test : public CV_solvePnPRansac_Test
-{
- public:
-  CV_solveP3P_Test()
-  {
-    eps[SOLVEPNP_P3P] = 2.0e-4;
-    eps[SOLVEPNP_AP3P] = 1.0e-4;
-    totalTestsCount = 1000;
-  }
-
-  ~CV_solveP3P_Test() {}
- protected:
-  virtual bool runTest(RNG& rng, int mode, int method, const vector<Point3f>& points, const double* epsilon, double& maxError)
-  {
-    std::vector<Mat> rvecs, tvecs;
-    Mat trueRvec, trueTvec;
-    Mat intrinsics, distCoeffs;
-    generateCameraMatrix(intrinsics, rng);
-    if (mode == 0)
-      distCoeffs = Mat::zeros(4, 1, CV_64FC1);
-    else
-      generateDistCoeffs(distCoeffs, rng);
-    generatePose(trueRvec, trueTvec, rng);
-
-    std::vector<Point3f> opoints;
-    opoints = std::vector<Point3f>(points.begin(), points.begin()+3);
-
-    vector<Point2f> projectedPoints;
-    projectedPoints.resize(opoints.size());
-    projectPoints(opoints, trueRvec, trueTvec, intrinsics, distCoeffs, projectedPoints);
-
-    int num_of_solutions = solveP3P(opoints, projectedPoints, intrinsics, distCoeffs, rvecs, tvecs, method);
-    if (num_of_solutions != (int) rvecs.size() || num_of_solutions != (int) tvecs.size() || num_of_solutions == 0)
-      return false;
-
-    bool isTestSuccess = false;
-    double error = DBL_MAX;
-    for (unsigned int i = 0; i < rvecs.size() && !isTestSuccess; ++i) {
-      double rvecDiff = cvtest::norm(rvecs[i], trueRvec, NORM_L2);
-      double tvecDiff = cvtest::norm(tvecs[i], trueTvec, NORM_L2);
-      isTestSuccess = rvecDiff < epsilon[method] && tvecDiff < epsilon[method];
-      error = std::min(error, std::max(rvecDiff, tvecDiff));
-    }
-
-    if (error > maxError)
-      maxError = error;
-
-    return isTestSuccess;
-  }
-
-  virtual void run(int)
-  {
-    ts->set_failed_test_info(cvtest::TS::OK);
-
-    vector<Point3f> points;
-    points.resize(pointsCount);
-    generate3DPointCloud(points);
-
-    const int methodsCount = 2;
-    int methods[] = {SOLVEPNP_P3P, SOLVEPNP_AP3P};
-    RNG rng = ts->get_rng();
-
-    for (int mode = 0; mode < 2; mode++)
+    virtual void run(int)
     {
-      for (int method = 0; method < methodsCount; method++)
-      {
-        double maxError = 0;
-        int successfulTestsCount = 0;
-        for (int testIndex = 0; testIndex < totalTestsCount; testIndex++)
+        ts->set_failed_test_info(cvtest::TS::OK);
+
+        vector<Point3f> points;
+        points.resize(static_cast<size_t>(pointsCount));
+        generate3DPointCloud(points);
+
+        const int methodsCount = 2;
+        int methods[] = {SOLVEPNP_P3P, SOLVEPNP_AP3P};
+        RNG rng = ts->get_rng();
+
+        for (int mode = 0; mode < 2; mode++)
         {
-          if (runTest(rng, mode, methods[method], points, eps, maxError))
-            successfulTestsCount++;
+            //To get the same input for each methods
+            RNG rngCopy = rng;
+            for (int method = 0; method < methodsCount; method++)
+            {
+                std::vector<double> vec_errorTrans, vec_errorRot;
+                vec_errorTrans.reserve(static_cast<size_t>(totalTestsCount));
+                vec_errorRot.reserve(static_cast<size_t>(totalTestsCount));
+
+                int successfulTestsCount = 0;
+                for (int testIndex = 0; testIndex < totalTestsCount; testIndex++)
+                {
+                    double errorTrans, errorRot;
+                    if (runTest(rngCopy, mode, methods[method], points, errorTrans, errorRot))
+                    {
+                        successfulTestsCount++;
+                    }
+                    vec_errorTrans.push_back(errorTrans);
+                    vec_errorRot.push_back(errorRot);
+                }
+
+                double maxErrorTrans = getMax(vec_errorTrans);
+                double maxErrorRot = getMax(vec_errorRot);
+                double meanErrorTrans = getMean(vec_errorTrans);
+                double meanErrorRot = getMean(vec_errorRot);
+                double medianErrorTrans = getMedian(vec_errorTrans);
+                double medianErrorRot = getMedian(vec_errorRot);
+
+                if (successfulTestsCount < 0.7*totalTestsCount)
+                {
+                    ts->printf(cvtest::TS::LOG, "Invalid accuracy for %s, failed %d tests from %d, %s, "
+                                                "maxErrT: %f, maxErrR: %f, "
+                                                "meanErrT: %f, meanErrR: %f, "
+                                                "medErrT: %f, medErrR: %f\n",
+                               printMethod(method).c_str(), totalTestsCount - successfulTestsCount, totalTestsCount, printMode(mode).c_str(),
+                               maxErrorTrans, maxErrorRot, meanErrorTrans, meanErrorRot, medianErrorTrans, medianErrorRot);
+                    ts->set_failed_test_info(cvtest::TS::FAIL_BAD_ACCURACY);
+                }
+                cout << "mode: " << printMode(mode) << ", method: " << printMethod(method) << " -> "
+                     << ((double)successfulTestsCount / totalTestsCount) * 100 << "%"
+                     << " (maxErrT: " << maxErrorTrans << ", maxErrR: " << maxErrorRot
+                     << ", meanErrT: " << meanErrorTrans << ", meanErrR: " << meanErrorRot
+                     << ", medErrT: " << medianErrorTrans << ", medErrR: " << medianErrorRot << ")" << endl;
+                double transThres, rotThresh;
+                findThreshold(vec_errorTrans, vec_errorRot, 0.7, transThres, rotThresh);
+                cout << "approximate translation threshold for 0.7: " << transThres
+                     << ", approximate rotation threshold for 0.7: " << rotThresh << endl;
+            }
         }
-        if (successfulTestsCount < 0.7*totalTestsCount)
-        {
-          ts->printf( cvtest::TS::LOG, "Invalid accuracy for method %d, failed %d tests from %d, maximum error equals %f, distortion mode equals %d\n",
-                      method, totalTestsCount - successfulTestsCount, totalTestsCount, maxError, mode);
-          ts->set_failed_test_info(cvtest::TS::FAIL_BAD_ACCURACY);
-        }
-        cout << "mode: " << mode << ", method: " << method << " -> "
-             << ((double)successfulTestsCount / totalTestsCount) * 100 << "%"
-             << " (err < " << maxError << ")" << endl;
-      }
     }
-  }
 };
 
 
 TEST(Calib3d_SolveP3P, accuracy) { CV_solveP3P_Test test; test.safe_run();}
 TEST(Calib3d_SolvePnPRansac, accuracy) { CV_solvePnPRansac_Test test; test.safe_run(); }
 TEST(Calib3d_SolvePnP, accuracy) { CV_solvePnP_Test test; test.safe_run(); }
+TEST(Calib3d_SolvePnP, accuracy_planar) { CV_solvePnP_Test test(true); test.safe_run(); }
+TEST(Calib3d_SolvePnP, accuracy_planar_tag) { CV_solvePnP_Test test(true, true); test.safe_run(); }
 
 TEST(Calib3d_SolvePnPRansac, concurrency)
 {
@@ -489,7 +770,7 @@ TEST(Calib3d_SolvePnPRansac, input_type)
     EXPECT_LE(cvtest::norm(t1, t4, NORM_INF), 1e-6);
 }
 
-TEST(Calib3d_SolvePnP, double_support)
+TEST(Calib3d_SolvePnPRansac, double_support)
 {
     Matx33d intrinsics(5.4794130238156129e+002, 0., 2.9835545700043139e+002, 0.,
                        5.4817724002728005e+002, 2.3062194051986233e+002, 0., 0., 1.);
@@ -500,13 +781,13 @@ TEST(Calib3d_SolvePnP, double_support)
     for (int i = 0; i < 10 ; i+=2)
     {
         points3d.push_back(cv::Point3d(5+i, 3, 2));
-        points3dF.push_back(cv::Point3d(5+i, 3, 2));
+        points3dF.push_back(cv::Point3f(5+i, 3, 2));
         points3d.push_back(cv::Point3d(5+i, 3+i, 2+i));
-        points3dF.push_back(cv::Point3d(5+i, 3+i, 2+i));
+        points3dF.push_back(cv::Point3f(5+i, 3+i, 2+i));
         points2d.push_back(cv::Point2d(0, i));
-        points2dF.push_back(cv::Point2d(0, i));
+        points2dF.push_back(cv::Point2f(0, i));
         points2d.push_back(cv::Point2d(-i, i));
-        points2dF.push_back(cv::Point2d(-i, i));
+        points2dF.push_back(cv::Point2f(-i, i));
     }
     Mat R, t, RF, tF;
     vector<int> inliers;
@@ -516,6 +797,101 @@ TEST(Calib3d_SolvePnP, double_support)
 
     EXPECT_LE(cvtest::norm(R, Mat_<double>(RF), NORM_INF), 1e-3);
     EXPECT_LE(cvtest::norm(t, Mat_<double>(tF), NORM_INF), 1e-3);
+}
+
+TEST(Calib3d_SolvePnP, input_type)
+{
+    Matx33d intrinsics(5.4794130238156129e+002, 0., 2.9835545700043139e+002, 0.,
+                       5.4817724002728005e+002, 2.3062194051986233e+002, 0., 0., 1.);
+    vector<Point3d> points3d_;
+    vector<Point3f> points3dF_;
+    //Cube
+    const float l = -0.1f;
+    //Front face
+    points3d_.push_back(Point3d(-l, -l, -l));
+    points3dF_.push_back(Point3f(-l, -l, -l));
+    points3d_.push_back(Point3d(l, -l, -l));
+    points3dF_.push_back(Point3f(l, -l, -l));
+    points3d_.push_back(Point3d(l, l, -l));
+    points3dF_.push_back(Point3f(l, l, -l));
+    points3d_.push_back(Point3d(-l, l, -l));
+    points3dF_.push_back(Point3f(-l, l, -l));
+    //Back face
+    points3d_.push_back(Point3d(-l, -l, l));
+    points3dF_.push_back(Point3f(-l, -l, l));
+    points3d_.push_back(Point3d(l, -l, l));
+    points3dF_.push_back(Point3f(l, -l, l));
+    points3d_.push_back(Point3d(l, l, l));
+    points3dF_.push_back(Point3f(l, l, l));
+    points3d_.push_back(Point3d(-l, l, l));
+    points3dF_.push_back(Point3f(-l, l, l));
+
+    Mat trueRvec = (Mat_<double>(3,1) << 0.1, -0.25, 0.467);
+    Mat trueTvec = (Mat_<double>(3,1) << -0.21, 0.12, 0.746);
+
+    for (int method = 0; method < SOLVEPNP_MAX_COUNT; method++)
+    {
+        vector<Point3d> points3d;
+        vector<Point2d> points2d;
+        vector<Point3f> points3dF;
+        vector<Point2f> points2dF;
+
+        if (method == SOLVEPNP_IPPE || method == SOLVEPNP_IPPE_SQUARE)
+        {
+            const float tagSize_2 = 0.05f / 2;
+            points3d.push_back(Point3d(-tagSize_2,  tagSize_2, 0));
+            points3d.push_back(Point3d( tagSize_2,  tagSize_2, 0));
+            points3d.push_back(Point3d( tagSize_2, -tagSize_2, 0));
+            points3d.push_back(Point3d(-tagSize_2, -tagSize_2, 0));
+
+            points3dF.push_back(Point3f(-tagSize_2,  tagSize_2, 0));
+            points3dF.push_back(Point3f( tagSize_2,  tagSize_2, 0));
+            points3dF.push_back(Point3f( tagSize_2, -tagSize_2, 0));
+            points3dF.push_back(Point3f(-tagSize_2, -tagSize_2, 0));
+        }
+        else if (method == SOLVEPNP_P3P || method == SOLVEPNP_AP3P)
+        {
+            points3d = vector<Point3d>(points3d_.begin(), points3d_.begin()+4);
+            points3dF = vector<Point3f>(points3dF_.begin(), points3dF_.begin()+4);
+        }
+        else
+        {
+            points3d = points3d_;
+            points3dF = points3dF_;
+        }
+
+        projectPoints(points3d, trueRvec, trueTvec, intrinsics, noArray(), points2d);
+        projectPoints(points3dF, trueRvec, trueTvec, intrinsics, noArray(), points2dF);
+
+        {
+            Mat R, t, RF, tF;
+
+            solvePnP(points3dF, points2dF, intrinsics, Mat(), RF, tF, false, method);
+            solvePnP(points3d, points2d, intrinsics, Mat(), R, t, false, method);
+
+            EXPECT_LE(cvtest::norm(R, Mat_<double>(RF), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(t, Mat_<double>(tF), NORM_INF), 1e-3);
+
+            EXPECT_LE(cvtest::norm(trueRvec, R, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, t, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(RF), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(tF), NORM_INF), 1e-3);
+        }
+        {
+            Mat R1, t1, R2, t2;
+
+            solvePnP(points3dF, points2d, intrinsics, Mat(), R1, t1, false, method);
+            solvePnP(points3d, points2dF, intrinsics, Mat(), R2, t2, false, method);
+
+            EXPECT_LE(cvtest::norm(Mat_<double>(R1), Mat_<double>(R1), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(Mat_<double>(t1), Mat_<double>(t2), NORM_INF), 1e-3);
+
+            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(R1), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(t1), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(R2), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(t2), NORM_INF), 1e-3);
+        }
+    }
 }
 
 TEST(Calib3d_SolvePnP, translation)

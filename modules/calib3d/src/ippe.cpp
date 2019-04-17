@@ -27,14 +27,17 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ippe.hpp"
 
+//TODO: debug
+#include <iostream>
+
 namespace cv {
 namespace IPPE {
 PoseSolver::PoseSolver() : IPPE_SMALL(1e-7)
 {
 }
 
-void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints, InputArray _cameraMatrix, InputArray _distCoeffs,
-                              OutputArray _rvec1, OutputArray _tvec1, float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
+void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints, OutputArray _rvec1, OutputArray _tvec1,
+                              float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
 {
     Mat normalizedImagePoints; //undistored version of imagePoints
     _imagePoints.copyTo(normalizedImagePoints);
@@ -47,7 +50,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints,
     Mat M1, M2;
 
     //sort poses by reprojection error:
-    sortPosesByReprojError(_objectPoints, _imagePoints, _cameraMatrix, _distCoeffs, Ma, Mb, M1, M2, err1, err2);
+    sortPosesByReprojError(_objectPoints, _imagePoints, Ma, Mb, M1, M2, err1, err2);
 
     //fill outputs
     rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
@@ -61,7 +64,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _normalizedIn
                               OutputArray _Ma, OutputArray _Mb)
 {
     //argument checking:
-    size_t n = _objectPoints.rows() * _objectPoints.cols(); //number of points
+    size_t n = static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols()); //number of points
     int objType = _objectPoints.type();
     int type_input = _normalizedInputPoints.type();
 
@@ -77,7 +80,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _normalizedIn
     Mat normalizedInputPoints;
     if (type_input == CV_32FC2)
     {
-        _normalizedInputPoints.getMat().convertTo(normalizedInputPoints, CV_64FC2);
+        _normalizedInputPoints.getMat().convertTo(normalizedInputPoints, CV_64F);
     }
     else
     {
@@ -87,7 +90,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _normalizedIn
     Mat objectInputPoints;
     if (type_input == CV_32FC3)
     {
-        _objectPoints.getMat().convertTo(objectInputPoints, CV_64FC3);
+        _objectPoints.getMat().convertTo(objectInputPoints, CV_64F);
     }
     else
     {
@@ -155,8 +158,8 @@ void PoseSolver::solveCanonicalForm(InputArray _canonicalObjPoints, InputArray _
     computeTranslation(_canonicalObjPoints, _normalizedInputPoints, Rb, tb);
 }
 
-void PoseSolver::solveSquare(float squareLength, InputArray _imagePoints, InputArray _cameraMatrix, InputArray _distCoeffs,
-                             OutputArray _rvec1, OutputArray _tvec1, float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
+void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, OutputArray _rvec1, OutputArray _tvec1,
+                             float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
 {
     //allocate outputs:
     _rvec1.create(3, 1, CV_64FC1);
@@ -164,56 +167,6 @@ void PoseSolver::solveSquare(float squareLength, InputArray _imagePoints, InputA
     _rvec2.create(3, 1, CV_64FC1);
     _tvec2.create(3, 1, CV_64FC1);
 
-    Mat normalizedInputPoints; //undistored version of imagePoints
-    Mat objectPoints2D;
-
-    //generate the object points:
-    generateSquareObjectCorners2D(squareLength, objectPoints2D);
-
-    Mat H; //homography from canonical object points to normalized pixels
-
-    if (_cameraMatrix.empty())
-    {
-        //this means imagePoints are defined in normalized pixel coordinates, so just copy it:
-        _imagePoints.copyTo(normalizedInputPoints);
-    }
-    else
-    {
-        //undistort the image points (i.e. put them in normalized pixel coordinates).
-        undistortPoints(_imagePoints, normalizedInputPoints, _cameraMatrix, _distCoeffs);
-    }
-
-    //compute H
-    homographyFromSquarePoints(normalizedInputPoints, squareLength / 2.0f, H);
-
-    //now solve
-    Mat Ma, Mb;
-    solveCanonicalForm(objectPoints2D, normalizedInputPoints, H, Ma, Mb);
-
-    //sort poses according to reprojection error:
-    Mat M1, M2;
-    Mat objectPoints3D;
-    generateSquareObjectCorners3D(squareLength, objectPoints3D);
-    sortPosesByReprojError(objectPoints3D, _imagePoints, _cameraMatrix, _distCoeffs, Ma, Mb, M1, M2, err1, err2);
-
-    //fill outputs
-    rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
-    rot2vec(M2.colRange(0, 3).rowRange(0, 3), _rvec2);
-
-    M1.colRange(3, 4).rowRange(0, 3).copyTo(_tvec1);
-    M2.colRange(3, 4).rowRange(0, 3).copyTo(_tvec2);
-}
-
-void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, InputArray _cameraMatrix, InputArray _distCoeffs,
-                             OutputArray _rvec1, OutputArray _tvec1, float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
-{
-    //allocate outputs:
-    _rvec1.create(3, 1, CV_64FC1);
-    _tvec1.create(3, 1, CV_64FC1);
-    _rvec2.create(3, 1, CV_64FC1);
-    _tvec2.create(3, 1, CV_64FC1);
-
-    Mat normalizedInputPoints; //undistored version of imagePoints
     Mat objectPoints2D;
 
     //generate the object points:
@@ -246,7 +199,16 @@ void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, 
     }
 
     Mat H; //homography from canonical object points to normalized pixels
-    _imagePoints.copyTo(normalizedInputPoints);
+
+    Mat normalizedInputPoints;
+    if (_imagePoints.getMat().type() == CV_32FC2)
+    {
+        _imagePoints.getMat().convertTo(normalizedInputPoints, CV_64F);
+    }
+    else
+    {
+        normalizedInputPoints = _imagePoints.getMat();
+    }
 
     //compute H
     homographyFromSquarePoints(normalizedInputPoints, squareLength / 2.0, H);
@@ -259,7 +221,7 @@ void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, 
     Mat M1, M2;
 //    Mat objectPoints3D;
 //    generateSquareObjectCorners3D(squareLength, objectPoints3D);
-    sortPosesByReprojError(_objectPoints, _imagePoints, _cameraMatrix, _distCoeffs, Ma, Mb, M1, M2, err1, err2);
+    sortPosesByReprojError(_objectPoints, _imagePoints, Ma, Mb, M1, M2, err1, err2);
 
     //fill outputs
     rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
@@ -294,7 +256,7 @@ double PoseSolver::meanSceneDepth(InputArray _objectPoints, InputArray _rvec, In
     CV_CheckType(_objectPoints.type(), _objectPoints.type() == CV_64FC3,
                  "Type of _objectPoints must be CV_64FC3" );
 
-    size_t n = _objectPoints.rows() * _objectPoints.cols();
+    size_t n = static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols());
     Mat R;
     Mat q;
     Rodrigues(_rvec, R);
@@ -305,7 +267,7 @@ double PoseSolver::meanSceneDepth(InputArray _objectPoints, InputArray _rvec, In
         Mat p(_objectPoints.getMat().at<Point3d>(static_cast<int>(i)));
         q = R * p + _tvec.getMat();
         double z;
-        if (q.depth() == CV_64FC1)
+        if (q.depth() == CV_64F)
         {
             z = q.at<double>(2);
         }
@@ -366,7 +328,16 @@ void PoseSolver::computeTranslation(InputArray _objectPoints, InputArray _normal
     CV_Assert(_objectPoints.rows() == 1 || _objectPoints.cols() == 1);
     CV_Assert(_normalizedImgPoints.rows() == 1 || _normalizedImgPoints.cols() == 1);
 
-    size_t n = _normalizedImgPoints.rows() * _normalizedImgPoints.cols();
+    size_t n = static_cast<size_t>(_normalizedImgPoints.rows() * _normalizedImgPoints.cols());
+    //TODO: debug
+    if (n != static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols())) {
+        Mat m_tmp = _objectPoints.getMat();
+        std::cout << "_objectPoints: " << m_tmp.rows << "x" << m_tmp.cols << " ; channels: " << m_tmp.channels() << std::endl;
+
+        Mat m_tmp2 = _normalizedImgPoints.getMat();
+        std::cout << "_normalizedImgPoints: " << m_tmp2.rows << "x" << m_tmp2.cols << " ; channels: " << m_tmp2.channels() << std::endl;
+        std::cout << "n: " << n << " ; _objectPoints.rows() * _objectPoints.cols(): " << (_objectPoints.rows() * _objectPoints.cols()) << std::endl;
+    }
     CV_Assert(n == static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols()));
 
     Mat objectPoints = _objectPoints.getMat();
@@ -641,12 +612,13 @@ void PoseSolver::makeCanonicalObjectPoints(InputArray _objectPoints, OutputArray
             x = objectPoints.at<Vec3d>(i)[0];
             y = objectPoints.at<Vec3d>(i)[1];
             z = objectPoints.at<Vec3d>(i)[2];
-
-            if (abs(z) > IPPE_SMALL)
-            {
-                isOnZPlane = false;
-            }
         }
+
+        if (abs(z) > IPPE_SMALL)
+        {
+            isOnZPlane = false;
+        }
+
         xBar += x;
         yBar += y;
         zBar += z;
@@ -655,9 +627,9 @@ void PoseSolver::makeCanonicalObjectPoints(InputArray _objectPoints, OutputArray
         UZero.at<double>(1, i) = y;
         UZero.at<double>(2, i) = z;
     }
-    xBar = xBar / (double)n;
-    yBar = yBar / (double)n;
-    zBar = zBar / (double)n;
+    xBar = xBar / static_cast<double>(n);
+    yBar = yBar / static_cast<double>(n);
+    zBar = zBar / static_cast<double>(n);
 
     for (int i = 0; i < n; i++)
     {
@@ -706,7 +678,8 @@ void PoseSolver::makeCanonicalObjectPoints(InputArray _objectPoints, OutputArray
             canonicalObjPoints.at<Vec2d>(i)[0] = UZeroAligned.at<double>(0, i);
             canonicalObjPoints.at<Vec2d>(i)[1] = UZeroAligned.at<double>(1, i);
             //or
-            CV_DbgAssert(abs(UZeroAligned.at<double>(2, i)) <= IPPE_SMALL);
+            //TODO:
+//            CV_DbgAssert(abs(UZeroAligned.at<double>(2, i)) <= IPPE_SMALL);
 //            assert(abs(UZeroAligned.at<double>(2, i)) <= IPPE_SMALL);
         }
 
@@ -720,15 +693,16 @@ void PoseSolver::makeCanonicalObjectPoints(InputArray _objectPoints, OutputArray
     }
 }
 
-void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _cameraMatrix,
-                                 InputArray _distCoeffs, InputArray _M, float& err)
+void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _M, float& err)
 {
     Mat projectedPoints;
     Mat imagePoints = _imagePoints.getMat();
     Mat r;
     rot2vec(_M.getMat().colRange(0, 3).rowRange(0, 3), r);
 
-    projectPoints(_objectPoints, r, _M.getMat().colRange(3, 4).rowRange(0, 3), _cameraMatrix, _distCoeffs, projectedPoints);
+    Mat K = Mat::eye(3, 3, CV_64FC1);
+    Mat dist;
+    projectPoints(_objectPoints, r, _M.getMat().colRange(3, 4).rowRange(0, 3), K, dist, projectedPoints);
 
     err = 0;
     int n = _objectPoints.rows() * _objectPoints.cols();
@@ -736,7 +710,7 @@ void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoin
     float dx, dy;
     for (int i = 0; i < n; i++)
     {
-        if (projectedPoints.depth() == CV_32FC1)
+        if (projectedPoints.depth() == CV_32F)
         {
             dx = projectedPoints.at<Vec2f>(i)[0] - imagePoints.at<Vec2f>(i)[0];
             dy = projectedPoints.at<Vec2f>(i)[1] - imagePoints.at<Vec2f>(i)[1];
@@ -752,12 +726,12 @@ void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoin
     err = sqrt(err / (2.0f * n));
 }
 
-void PoseSolver::sortPosesByReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _cameraMatrix, InputArray _distCoeffs,
-                                        InputArray _Ma, InputArray _Mb, OutputArray _M1, OutputArray _M2, float& err1, float& err2)
+void PoseSolver::sortPosesByReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _Ma, InputArray _Mb,
+                                        OutputArray _M1, OutputArray _M2, float& err1, float& err2)
 {
     float erra, errb;
-    evalReprojError(_objectPoints, _imagePoints, _cameraMatrix, _distCoeffs, _Ma, erra);
-    evalReprojError(_objectPoints, _imagePoints, _cameraMatrix, _distCoeffs, _Mb, errb);
+    evalReprojError(_objectPoints, _imagePoints, _Ma, erra);
+    evalReprojError(_objectPoints, _imagePoints, _Mb, errb);
     if (erra < errb)
     {
         err1 = erra;
@@ -964,8 +938,8 @@ void normalizeDataIsotropic(InputArray _Data, OutputArray _DataN, OutputArray _T
             }
         }
     }
-    xm = xm / (double)numPoints;
-    ym = ym / (double)numPoints;
+    xm = xm / static_cast<double>(numPoints);
+    ym = ym / static_cast<double>(numPoints);
 
     double kappa = 0;
     double xh, yh;

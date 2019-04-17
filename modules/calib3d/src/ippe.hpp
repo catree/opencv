@@ -46,8 +46,6 @@ public:
      * @param _objectPoints  Array of 4 or more coplanar object points defined in object coordinates.
      *                       1xN/Nx1 3-channel (float or double) where N is the number of points
      * @param _imagePoints   Array of corresponding image points, 1xN/Nx1 2-channel. Points are in normalized pixel coordinates.
-     * @param _cameraMatrix  Intrinsic camera matrix (same definition as OpenCV).
-     * @param _distCoeffs    Intrinsic camera distortion vector (same definition as OpenCV).
      * @param _rvec1         First rotation solution (3x1 rotation vector)
      * @param _tvec1         First translation solution (3x1 vector)
      * @param reprojErr1     Reprojection error of first solution
@@ -55,15 +53,14 @@ public:
      * @param _tvec2         Second translation solution (3x1 vector)
      * @param reprojErr2     Reprojection error of second solution
      */
-    void solveGeneric(cv::InputArray _objectPoints, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs,
-                      cv::OutputArray _rvec1, cv::OutputArray _tvec1, float& reprojErr1, cv::OutputArray _rvec2, cv::OutputArray _tvec2, float& reprojErr2);
+    void solveGeneric(InputArray _objectPoints, InputArray _imagePoints, OutputArray _rvec1, OutputArray _tvec1,
+                      float& reprojErr1, OutputArray _rvec2, OutputArray _tvec2, float& reprojErr2);
 
+    //TODO: doc
     /** @brief                   Finds the two possible poses of a square planar object and their respective reprojection errors using IPPE. These poses are sorted so that the first one is the one with the lowest reprojection error.
      *
      * @param _squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
      * @param _imagePoints       Array of corresponding image points, 1xN/Nx1 2-channel. This can either be in pixel coordinates or normalized pixel coordinates.
-     * @param _cameraMatrix      Intrinsic camera matrix (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray()
-     * @param _distCoeffs        Intrinsic camera distortion vector (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray()
      * @param _rvec1             First rotation solution (3x1 rotation vector)
      * @param _tvec1             First translation solution (3x1 vector)
      * @param reprojErr1         Reprojection error of first solution
@@ -71,11 +68,8 @@ public:
      * @param _tvec2             Second translation solution (3x1 vector)
      * @param reprojErr2         Reprojection error of second solution
      */
-    void solveSquare(float squareLength, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs,
-                     cv::OutputArray _rvec1, cv::OutputArray _tvec1, float& reprojErr1, cv::OutputArray _rvec2, cv::OutputArray _tvec2, float& reprojErr2);
-
-    void solveSquare(cv::InputArray _objectPoints, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs,
-                     cv::OutputArray _rvec1, cv::OutputArray _tvec1, float& reprojErr1, cv::OutputArray _rvec2, cv::OutputArray _tvec2, float& reprojErr2);
+    void solveSquare(InputArray _objectPoints, InputArray _imagePoints, OutputArray _rvec1, OutputArray _tvec1,
+                     float& reprojErr1, OutputArray _rvec2, OutputArray _tvec2, float& reprojErr2);
 
 private:
     /**
@@ -85,7 +79,7 @@ private:
      * @param _Ma                      First pose solution (unsorted)
      * @param _Mb                      Second pose solution (unsorted)
      */
-    void solveGeneric(cv::InputArray _objectPoints, cv::InputArray _normalizedImagePoints, cv::OutputArray _Ma, cv::OutputArray _Mb);
+    void solveGeneric(InputArray _objectPoints, InputArray _normalizedImagePoints, OutputArray _Ma, OutputArray _Mb);
 
     /**
      * @brief                          Finds the two possible poses of a planar object in its canonical position, given a set of correspondences in normalized pixel coordinates. These poses are **NOT** sorted on reprojection error. Note that the returned poses are object-to-camera transforms, and not camera-to-object transforms.
@@ -95,8 +89,8 @@ private:
      * @param _Ma
      * @param _Mb
      */
-    void solveCanonicalForm(cv::InputArray _canonicalObjPoints, cv::InputArray _normalizedInputPoints, cv::InputArray _H,
-                            cv::OutputArray _Ma, cv::OutputArray _Mb);
+    void solveCanonicalForm(InputArray _canonicalObjPoints, InputArray _normalizedInputPoints, InputArray _H,
+                            OutputArray _Ma, OutputArray _Mb);
 
     /** @brief                           Computes the translation solution for a given rotation solution
      * @param _objectPoints              Array of corresponding object points, 1xN/Nx1 3-channel where N is the number of points
@@ -104,7 +98,7 @@ private:
      * @param _R                         Rotation solution (3x1 rotation vector)
      * @param _t  Translation solution   Translation solution (3x1 rotation vector)
      */
-    void computeTranslation(cv::InputArray _objectPoints, cv::InputArray _normalizedImgPoints, cv::InputArray _R, cv::OutputArray _t);
+    void computeTranslation(InputArray _objectPoints, InputArray _normalizedImgPoints, InputArray _R, OutputArray _t);
 
     /** @brief                           Computes the two rotation solutions from the Jacobian of a homography matrix H at a point (ux,uy) on the object plane. For highest accuracy the Jacobian should be computed at the centroid of the point correspondences (see the IPPE paper for the explanation of this). For a point (ux,uy) on the object plane, suppose the homography H maps (ux,uy) to a point (p,q) in the image (in normalized pixel coordinates). The Jacobian matrix [J00, J01; J10,J11] is the Jacobian of the mapping evaluated at (ux,uy).
      * @param j00                        Homography jacobian coefficent at (ux,uy)
@@ -114,7 +108,7 @@ private:
      * @param p                          the x coordinate of point (ux,uy) mapped into the image (undistorted and normalized position)
      * @param q                          the y coordinate of point (ux,uy) mapped into the image (undistorted and normalized position)
     */
-    void computeRotations(double j00, double j01, double j10, double j11, double p, double q, cv::OutputArray _R1, cv::OutputArray _R2);
+    void computeRotations(double j00, double j01, double j10, double j11, double p, double q, OutputArray _R1, OutputArray _R2);
 
     /** @brief                         Closed-form solution for the homography mapping with four corner correspondences of a square (it maps source points to target points). The source points are the four corners of a zero-centred squared defined by:
      *                                 point 0: [-squareLength / 2.0, squareLength / 2.0]
@@ -126,13 +120,13 @@ private:
      * @param halfLength               the square's half length (i.e. squareLength/2.0)
      * @param _H                       Homograhy mapping the source points to the target points, 3x3 single channel
     */
-    void homographyFromSquarePoints(cv::InputArray _targetPoints, double halfLength, cv::OutputArray _H);
+    void homographyFromSquarePoints(InputArray _targetPoints, double halfLength, OutputArray _H);
 
     /** @brief                  Fast conversion from a rotation matrix to a rotation vector using Rodrigues' formula
      * @param _R                Input rotation matrix, 3x3 1-channel (double)
      * @param _r                Output rotation vector, 3x1/1x3 1-channel (double)
      */
-    void rot2vec(cv::InputArray _R, cv::OutputArray _r);
+    void rot2vec(InputArray _R, OutputArray _r);
 
     /**
      * @brief                          Takes a set of planar object points and transforms them to 'canonical' object coordinates This is when they have zero mean and are on the plane z=0
@@ -140,25 +134,21 @@ private:
      * @param _canonicalObjectPoints   Object points in canonical coordinates 1xN/Nx1 2-channel (double)
      * @param _MobjectPoints2Canonical Transform matrix mapping _objectPoints to _canonicalObjectPoints: 4x4 1-channel (double)
      */
-    void makeCanonicalObjectPoints(cv::InputArray _objectPoints, cv::OutputArray _canonicalObjectPoints, cv::OutputArray _MobjectPoints2Canonical);
+    void makeCanonicalObjectPoints(InputArray _objectPoints, OutputArray _canonicalObjectPoints, OutputArray _MobjectPoints2Canonical);
 
     /**
      * @brief                           Evaluates the Root Mean Squared (RMS) reprojection error of a pose solution.
      * @param _objectPoints             Array of 4 or more coplanar object points defined in object coordinates. 1xN/Nx1 3-channel (float or double) where N is the number of points
      * @param _imagePoints              Array of corresponding image points, 1xN/Nx1 2-channel. This can either be in pixel coordinates or normalized pixel coordinates.
-     * @param _cameraMatrix             Intrinsic camera matrix (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray().
-     * @param _distCoeffs               Intrinsic camera distortion vector (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray().
      * @param _M                        Pose matrix from 3D object to camera coordinates: 4x4 1-channel (double)
      * @param err                       RMS reprojection error
      */
-    void evalReprojError(cv::InputArray _objectPoints, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs, cv::InputArray _M, float& err);
+    void evalReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _M, float& err);
 
     /**
      * @brief                           Sorts two pose solutions according to their RMS reprojection error (lowest first).
      * @param _objectPoints             Array of 4 or more coplanar object points defined in object coordinates. 1xN/Nx1 3-channel (float or double) where N is the number of points
      * @param _imagePoints              Array of corresponding image points, 1xN/Nx1 2-channel.  This can either be in pixel coordinates or normalized pixel coordinates.
-     * @param _cameraMatrix             Intrinsic camera matrix (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray().
-     * @param _distCoeffs               Intrinsic camera distortion vector (same definition as OpenCV). If _imagePoints is in normalized pixel coordinates you must set  _cameraMatrix = cv::noArray().
      * @param _Ma                       Pose matrix 1: 4x4 1-channel
      * @param _Mb                       Pose matrix 2: 4x4 1-channel
      * @param _M1                       Member of (Ma,Mb} with lowest RMS reprojection error. Performs deep copy.
@@ -166,14 +156,14 @@ private:
      * @param err1                      RMS reprojection error of _M1
      * @param err2                      RMS reprojection error of _M2
      */
-    void sortPosesByReprojError(cv::InputArray _objectPoints, cv::InputArray _imagePoints, cv::InputArray _cameraMatrix, cv::InputArray _distCoeffs, cv::InputArray _Ma, cv::InputArray _Mb, cv::OutputArray _M1, cv::OutputArray _M2, float& err1, float& err2);
+    void sortPosesByReprojError(InputArray _objectPoints, InputArray _imagePoints, InputArray _Ma, InputArray _Mb, OutputArray _M1, OutputArray _M2, float& err1, float& err2);
 
     /**
      * @brief                           Finds the rotation _Ra that rotates a vector _a to the z axis (0,0,1)
      * @param _a                        vector: 3x1 mat (double)
      * @param _Ra                       Rotation: 3x3 mat (double)
      */
-    void rotateVec2ZAxis(cv::InputArray _a, cv::OutputArray _Ra);
+    void rotateVec2ZAxis(InputArray _a, OutputArray _Ra);
 
     /**
      * @brief                           Computes the rotation _R that rotates the object points to the plane z=0. This uses the cross-product method with the first three object points.
@@ -181,28 +171,28 @@ private:
      * @param _R                        Rotation Mat: 3x3 (double)
      * @return                          success (true) or failure (false)
      */
-    bool computeObjextSpaceR3Pts(cv::InputArray _objectPoints, cv::OutputArray _R);
+    bool computeObjextSpaceR3Pts(InputArray _objectPoints, OutputArray _R);
 
     /**
      * @brief computeObjextSpaceRSvD    Computes the rotation _R that rotates the object points to the plane z=0. This uses the cross-product method with the first three object points.
      * @param _objectPointsZeroMean     zero-meaned co=planar object points: 3xN matrix (double) where N>=3
      * @param _R                        Rotation Mat: 3x3 (double)
      */
-    void computeObjextSpaceRSvD(cv::InputArray _objectPointsZeroMean, cv::OutputArray _R);
+    void computeObjextSpaceRSvD(InputArray _objectPointsZeroMean, OutputArray _R);
 
     /**
      * @brief                   Generates the 4 object points of a square planar object
      * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
      * @param _objectPoints     Set of 4 object points (1x4 3-channel double)
      */
-    void generateSquareObjectCorners3D(double squareLength, cv::OutputArray _objectPoints);
+    void generateSquareObjectCorners3D(double squareLength, OutputArray _objectPoints);
 
     /**
      * @brief                   Generates the 4 object points of a square planar object, without including the z-component (which is z=0 for all points).
      * @param squareLength      The square's length (which is also it's width) in object coordinate units (e.g. millimeters, meters, etc.)
      * @param _objectPoints     Set of 4 object points (1x4 2-channel double)
      */
-    void generateSquareObjectCorners2D(double squareLength, cv::OutputArray _objectPoints);
+    void generateSquareObjectCorners2D(double squareLength, OutputArray _objectPoints);
 
     /**
      * @brief                   Computes the average depth of an object given its pose in camera coordinates
@@ -211,7 +201,7 @@ private:
      * @param tvec:             Translation component of pose
      * @return:                 average depth of the object
      */
-     double meanSceneDepth(cv::InputArray objectPoints, cv::InputArray rvec, cv::InputArray tvec);
+     double meanSceneDepth(InputArray objectPoints, InputArray rvec, InputArray tvec);
 
     //! a small constant used to test 'small' values close to zero.
     double IPPE_SMALL;
@@ -228,7 +218,7 @@ namespace HomographyHO {
     * @param targPoints        Array of target points: 1xN/Nx1 2-channel (float or double)
     * @param H                 Homography from source to target: 3x3 1-channel (double)
     */
-void homographyHO(cv::InputArray srcPoints, cv::InputArray targPoints, cv::OutputArray H);
+void homographyHO(InputArray srcPoints, InputArray targPoints, OutputArray H);
 
     /**
     * @brief                      Performs data normalization before homography estimation. For details see Hartley, R., Zisserman, A., Multiple View Geometry in Computer Vision,
@@ -238,7 +228,7 @@ void homographyHO(cv::InputArray srcPoints, cv::InputArray targPoints, cv::Outpu
     * @param T                    Homogeneous transform from source to normalized: 3x3 1-channel (double)
     * @param Ti                   Homogeneous transform from normalized to source: 3x3 1-channel (double)
     */
-void normalizeDataIsotropic(cv::InputArray Data, cv::OutputArray DataN, cv::OutputArray T, cv::OutputArray Ti);
+void normalizeDataIsotropic(InputArray Data, OutputArray DataN, OutputArray T, OutputArray Ti);
 
 }
 } //namespace cv

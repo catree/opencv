@@ -231,15 +231,15 @@ enum { LMEDS  = 4, //!< least-median of squares algorithm
        RHO    = 16 //!< RHO algorithm
      };
 
-enum { SOLVEPNP_ITERATIVE = 0,
-       SOLVEPNP_EPNP      = 1, //!< EPnP: Efficient Perspective-n-Point Camera Pose Estimation @cite lepetit2009epnp
-       SOLVEPNP_P3P       = 2, //!< Complete Solution Classification for the Perspective-Three-Point Problem @cite gao2003complete
-       SOLVEPNP_DLS       = 3, //!< A Direct Least-Squares (DLS) Method for PnP  @cite hesch2011direct
-       SOLVEPNP_UPNP      = 4, //!< Exhaustive Linearization for Robust Camera Pose and Focal Length Estimation @cite penate2013exhaustive
-       SOLVEPNP_AP3P      = 5, //!< An Efficient Algebraic Solution to the Perspective-Three-Point Problem @cite Ke17
-       SOLVEPNP_IPPE      = 6, //TODO:
-       SOLVEPNP_IPPE_SQUARE = 7, //TODO:
-       SOLVEPNP_MAX_COUNT      //!< Used for count
+enum { SOLVEPNP_ITERATIVE   = 0,
+       SOLVEPNP_EPNP        = 1, //!< EPnP: Efficient Perspective-n-Point Camera Pose Estimation @cite lepetit2009epnp
+       SOLVEPNP_P3P         = 2, //!< Complete Solution Classification for the Perspective-Three-Point Problem @cite gao2003complete
+       SOLVEPNP_DLS         = 3, //!< A Direct Least-Squares (DLS) Method for PnP  @cite hesch2011direct
+       SOLVEPNP_UPNP        = 4, //!< Exhaustive Linearization for Robust Camera Pose and Focal Length Estimation @cite penate2013exhaustive
+       SOLVEPNP_AP3P        = 5, //!< An Efficient Algebraic Solution to the Perspective-Three-Point Problem @cite Ke17
+       SOLVEPNP_IPPE        = 6, //!< Infinitesimal Plane-Based Pose Estimation @cite Collins14
+       SOLVEPNP_IPPE_SQUARE = 7, //!< Infinitesimal Plane-Based Pose Estimation @cite Collins14
+       SOLVEPNP_MAX_COUNT        //!< Used for count
 };
 
 enum { CALIB_CB_ADAPTIVE_THRESH = 1,
@@ -778,6 +778,13 @@ CV_EXPORTS_W int solveP3P( InputArray objectPoints, InputArray imagePoints,
                            InputArray cameraMatrix, InputArray distCoeffs,
                            OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs,
                            int flags );
+
+//TODO: doc
+CV_EXPORTS_W int solvePnPGeneric( InputArray objectPoints, InputArray imagePoints,
+                                  InputArray cameraMatrix, InputArray distCoeffs,
+                                  OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs,
+                                  int flags, bool useExtrinsicGuess = false,
+                                  InputArray rvec = noArray(), InputArray tvec = noArray() );
 
 /** @brief Finds an initial camera matrix from 3D-2D point correspondences.
 
