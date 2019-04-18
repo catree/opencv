@@ -39,8 +39,15 @@ PoseSolver::PoseSolver() : IPPE_SMALL(1e-7)
 void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints, OutputArray _rvec1, OutputArray _tvec1,
                               float& err1, OutputArray _rvec2, OutputArray _tvec2, float& err2)
 {
-    Mat normalizedImagePoints; //undistored version of imagePoints
-    _imagePoints.copyTo(normalizedImagePoints);
+    Mat normalizedImagePoints;
+    if (_imagePoints.getMat().type() == CV_32FC2)
+    {
+        _imagePoints.getMat().convertTo(normalizedImagePoints, CV_64F);
+    }
+    else
+    {
+        normalizedImagePoints = _imagePoints.getMat();
+    }
 
     //solve:
     Mat Ma, Mb;
@@ -50,7 +57,7 @@ void PoseSolver::solveGeneric(InputArray _objectPoints, InputArray _imagePoints,
     Mat M1, M2;
 
     //sort poses by reprojection error:
-    sortPosesByReprojError(_objectPoints, _imagePoints, Ma, Mb, M1, M2, err1, err2);
+    sortPosesByReprojError(_objectPoints, normalizedImagePoints, Ma, Mb, M1, M2, err1, err2);
 
     //fill outputs
     rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
@@ -219,9 +226,7 @@ void PoseSolver::solveSquare(InputArray _objectPoints, InputArray _imagePoints, 
 
     //sort poses according to reprojection error:
     Mat M1, M2;
-//    Mat objectPoints3D;
-//    generateSquareObjectCorners3D(squareLength, objectPoints3D);
-    sortPosesByReprojError(_objectPoints, _imagePoints, Ma, Mb, M1, M2, err1, err2);
+    sortPosesByReprojError(_objectPoints, normalizedInputPoints, Ma, Mb, M1, M2, err1, err2);
 
     //fill outputs
     rot2vec(M1.colRange(0, 3).rowRange(0, 3), _rvec1);
@@ -329,15 +334,6 @@ void PoseSolver::computeTranslation(InputArray _objectPoints, InputArray _normal
     CV_Assert(_normalizedImgPoints.rows() == 1 || _normalizedImgPoints.cols() == 1);
 
     size_t n = static_cast<size_t>(_normalizedImgPoints.rows() * _normalizedImgPoints.cols());
-    //TODO: debug
-    if (n != static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols())) {
-        Mat m_tmp = _objectPoints.getMat();
-        std::cout << "_objectPoints: " << m_tmp.rows << "x" << m_tmp.cols << " ; channels: " << m_tmp.channels() << std::endl;
-
-        Mat m_tmp2 = _normalizedImgPoints.getMat();
-        std::cout << "_normalizedImgPoints: " << m_tmp2.rows << "x" << m_tmp2.cols << " ; channels: " << m_tmp2.channels() << std::endl;
-        std::cout << "n: " << n << " ; _objectPoints.rows() * _objectPoints.cols(): " << (_objectPoints.rows() * _objectPoints.cols()) << std::endl;
-    }
     CV_Assert(n == static_cast<size_t>(_objectPoints.rows() * _objectPoints.cols()));
 
     Mat objectPoints = _objectPoints.getMat();
@@ -712,8 +708,8 @@ void PoseSolver::evalReprojError(InputArray _objectPoints, InputArray _imagePoin
     {
         if (projectedPoints.depth() == CV_32F)
         {
-            dx = projectedPoints.at<Vec2f>(i)[0] - imagePoints.at<Vec2f>(i)[0];
-            dy = projectedPoints.at<Vec2f>(i)[1] - imagePoints.at<Vec2f>(i)[1];
+            dx = projectedPoints.at<Vec2f>(i)[0] - static_cast<float>(imagePoints.at<Vec2d>(i)[0]);
+            dy = projectedPoints.at<Vec2f>(i)[1] - static_cast<float>(imagePoints.at<Vec2d>(i)[1]);
         }
         else
         {

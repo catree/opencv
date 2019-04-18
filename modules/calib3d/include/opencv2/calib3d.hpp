@@ -783,8 +783,9 @@ CV_EXPORTS_W int solveP3P( InputArray objectPoints, InputArray imagePoints,
 CV_EXPORTS_W int solvePnPGeneric( InputArray objectPoints, InputArray imagePoints,
                                   InputArray cameraMatrix, InputArray distCoeffs,
                                   OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs,
-                                  int flags, bool useExtrinsicGuess = false,
-                                  InputArray rvec = noArray(), InputArray tvec = noArray() );
+                                  bool useExtrinsicGuess = false, int flags = SOLVEPNP_ITERATIVE,
+                                  InputArray rvec = noArray(), InputArray tvec = noArray(),
+                                  OutputArray reprojectionError = noArray());
 
 /** @brief Finds an initial camera matrix from 3D-2D point correspondences.
 

@@ -866,16 +866,22 @@ TEST(Calib3d_SolvePnP, input_type)
         {
             Mat R, t, RF, tF;
 
-            solvePnP(points3dF, points2dF, intrinsics, Mat(), RF, tF, false, method);
+            solvePnP(points3dF, points2dF, Matx33f(intrinsics), Mat(), RF, tF, false, method);
             solvePnP(points3d, points2d, intrinsics, Mat(), R, t, false, method);
 
-            EXPECT_LE(cvtest::norm(R, Mat_<double>(RF), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(t, Mat_<double>(tF), NORM_INF), 1e-3);
+            EXPECT_EQ(RF.type(), tF.type());
+            EXPECT_EQ(RF.type(), CV_64FC1);
+
+            EXPECT_EQ(R.type(), t.type());
+            EXPECT_EQ(R.type(), CV_64FC1);
+
+            EXPECT_LE(cvtest::norm(R, RF, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(t, tF, NORM_INF), 1e-3);
 
             EXPECT_LE(cvtest::norm(trueRvec, R, NORM_INF), 1e-3);
             EXPECT_LE(cvtest::norm(trueTvec, t, NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(RF), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(tF), NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueRvec, RF, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, tF, NORM_INF), 1e-3);
         }
         {
             Mat R1, t1, R2, t2;
@@ -883,13 +889,19 @@ TEST(Calib3d_SolvePnP, input_type)
             solvePnP(points3dF, points2d, intrinsics, Mat(), R1, t1, false, method);
             solvePnP(points3d, points2dF, intrinsics, Mat(), R2, t2, false, method);
 
-            EXPECT_LE(cvtest::norm(Mat_<double>(R1), Mat_<double>(R1), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(Mat_<double>(t1), Mat_<double>(t2), NORM_INF), 1e-3);
+            EXPECT_EQ(R1.type(), t1.type());
+            EXPECT_EQ(R1.type(), CV_64FC1);
 
-            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(R1), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(t1), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(trueRvec, Mat_<double>(R2), NORM_INF), 1e-3);
-            EXPECT_LE(cvtest::norm(trueTvec, Mat_<double>(t2), NORM_INF), 1e-3);
+            EXPECT_EQ(R2.type(), t2.type());
+            EXPECT_EQ(R2.type(), CV_64FC1);
+
+            EXPECT_LE(cvtest::norm(R1, R2, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(t1, t2, NORM_INF), 1e-3);
+
+            EXPECT_LE(cvtest::norm(trueRvec, R1, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, t1, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueRvec, R2, NORM_INF), 1e-3);
+            EXPECT_LE(cvtest::norm(trueTvec, t2, NORM_INF), 1e-3);
         }
     }
 }
