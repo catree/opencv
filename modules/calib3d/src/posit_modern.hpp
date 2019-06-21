@@ -10,9 +10,10 @@
 namespace cv {
 namespace POSIT {
 
-void posit(const Mat& opoints, const Mat& ipoints, Matx31d& rvec, Matx31d& tvec);
+void posit(const Mat& objectPoints_, const Mat& imagePoints_, Matx31d& rvec, Matx31d& tvec);
 
-void positPlanar();
+int positPlanar(const Mat& objectPoints_, const Mat& imagePoints_,
+                Matx31d& rvec1, Matx31d& tvec1, Matx31d& rvec2, Matx31d& tvec2);
 
 }
 } //namespace cv

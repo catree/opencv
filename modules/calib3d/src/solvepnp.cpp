@@ -52,7 +52,8 @@
 
 namespace cv
 {
-#if defined _DEBUG || defined CV_STATIC_ANALYSIS
+static const double planarTestThreshold = 1e-3;
+
 static bool isPlanarObjectPoints(InputArray _objectPoints, double threshold)
 {
     CV_CheckType(_objectPoints.type(), _objectPoints.type() == CV_32FC3 || _objectPoints.type() == CV_64FC3,
@@ -79,6 +80,7 @@ static bool isPlanarObjectPoints(InputArray _objectPoints, double threshold)
     return (w.at<double>(2) < w.at<double>(1) * threshold);
 }
 
+#if defined _DEBUG || defined CV_STATIC_ANALYSIS
 static bool approxEqual(double a, double b, double eps)
 {
     return std::fabs(a-b) < eps;
@@ -827,7 +829,7 @@ int solvePnPGeneric( InputArray _opoints, InputArray _ipoints,
     }
     else if (flags == SOLVEPNP_IPPE)
     {
-        CV_DbgAssert(isPlanarObjectPoints(opoints, 1e-3));
+        CV_DbgAssert(isPlanarObjectPoints(opoints, planarTestThreshold));
         Mat undistortedPoints;
         undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
 
@@ -934,11 +936,31 @@ int solvePnPGeneric( InputArray _opoints, InputArray _ipoints,
         Mat undistortedPoints;
         undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
 
-        Matx31d rvec, tvec;
-        POSIT::posit(opoints, undistortedPoints, rvec, tvec);
+        if (isPlanarObjectPoints(opoints, planarTestThreshold))
+        {
+            Matx31d rvec1, tvec1;
+            Matx31d rvec2, tvec2;
+            int nbSol = POSIT::positPlanar(opoints, undistortedPoints, rvec1, tvec1, rvec2, tvec2);
+            if (nbSol > 0)
+            {
+                vec_rvecs.push_back(Mat(rvec1));
+                vec_tvecs.push_back(Mat(tvec1));
 
-        vec_rvecs.push_back(Mat(rvec));
-        vec_tvecs.push_back(Mat(tvec));
+                if (nbSol == 2)
+                {
+                    vec_rvecs.push_back(Mat(rvec2));
+                    vec_tvecs.push_back(Mat(tvec2));
+                }
+            }
+        }
+        else
+        {
+            Matx31d rvec, tvec;
+            POSIT::posit(opoints, undistortedPoints, rvec, tvec);
+
+            vec_rvecs.push_back(Mat(rvec));
+            vec_tvecs.push_back(Mat(tvec));
+        }
     }
     /*else if (flags == SOLVEPNP_DLS)
     {
