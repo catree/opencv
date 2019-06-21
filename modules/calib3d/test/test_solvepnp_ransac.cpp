@@ -444,7 +444,9 @@ public:
         eps[SOLVEPNP_IPPE_SQUARE] = 1.0e-6;
         eps[SOLVEPNP_POSIT] = 1.0e-6;
 
-        totalTestsCount = 1000;
+        //TODO:
+//        totalTestsCount = 1000;
+        totalTestsCount = 1;
 
         if (planar || planarTag)
         {
@@ -490,10 +492,12 @@ protected:
                 epsilon_trans[SOLVEPNP_EPNP] = 5.0e-3;
                 epsilon_trans[SOLVEPNP_DLS] = 5.0e-3;
                 epsilon_trans[SOLVEPNP_UPNP] = 5.0e-3;
+                epsilon_trans[SOLVEPNP_POSIT] = 1e-4;
 
                 epsilon_rot[SOLVEPNP_EPNP] = 5.0e-3;
                 epsilon_rot[SOLVEPNP_DLS] = 5.0e-3;
                 epsilon_rot[SOLVEPNP_UPNP] = 5.0e-3;
+                epsilon_rot[SOLVEPNP_POSIT] = 1e-4;
             }
             else
             {
@@ -505,6 +509,7 @@ protected:
                 epsilon_trans[SOLVEPNP_AP3P] = 1e-4;
                 epsilon_trans[SOLVEPNP_IPPE] = 1e-4;
                 epsilon_trans[SOLVEPNP_IPPE_SQUARE] = 1e-4;
+                epsilon_trans[SOLVEPNP_POSIT] = 1e-4;
 
                 epsilon_rot[SOLVEPNP_ITERATIVE] = 1e-4;
                 epsilon_rot[SOLVEPNP_EPNP] = 5e-3;
@@ -514,6 +519,7 @@ protected:
                 epsilon_rot[SOLVEPNP_AP3P] = 1e-4;
                 epsilon_rot[SOLVEPNP_IPPE] = 1e-4;
                 epsilon_rot[SOLVEPNP_IPPE_SQUARE] = 1e-4;
+                epsilon_rot[SOLVEPNP_POSIT] = 1e-4;
             }
         }
 
@@ -568,6 +574,29 @@ protected:
         Mat rvec, tvec;
         bool isEstimateSuccess = solvePnP(opoints, projectedPoints, intrinsics, distCoeffs, rvec, tvec, false, method);
 
+        //TODO: debug
+        if (method == SOLVEPNP_POSIT)
+        {
+            std::cout << "opoints:" << std::endl;
+            for (size_t i = 0; i < opoints.size(); i++)
+            {
+                std::cout << "opoints[" << i << "]: " << opoints[i] << std::endl;
+            }
+
+            std::cout << "\nprojectedPoints:" << std::endl;
+            for (size_t i = 0; i < projectedPoints.size(); i++)
+            {
+                std::cout << "projectedPoints[" << i << "]: " << projectedPoints[i] << std::endl;
+            }
+
+            std::cout << "\nintrinsics:\n" << intrinsics << std::endl;
+
+            std::cout << "\ntrueRvec: " << trueRvec.t() << std::endl;
+            std::cout << "rvec: " << rvec.t() << std::endl;
+            std::cout << "trueTvec: " << trueTvec.t() << std::endl;
+            std::cout << "tvec: " << tvec.t() << std::endl;
+        }
+
         if (!isEstimateSuccess)
         {
             return false;
@@ -579,7 +608,21 @@ protected:
         //TODO: debug
         if (method == SOLVEPNP_POSIT)
         {
-            std::cout << "trueRvec: " << trueRvec.t() << std::endl;
+            std::cout << "opoints:" << std::endl;
+            for (size_t i = 0; i < opoints.size(); i++)
+            {
+                std::cout << "opoints[" << i << "]: " << opoints[i] << std::endl;
+            }
+
+            std::cout << "\nprojectedPoints:" << std::endl;
+            for (size_t i = 0; i < projectedPoints.size(); i++)
+            {
+                std::cout << "projectedPoints[" << i << "]: " << projectedPoints[i] << std::endl;
+            }
+
+            std::cout << "\nintrinsics:\n" << intrinsics << std::endl;
+
+            std::cout << "\ntrueRvec: " << trueRvec.t() << std::endl;
             std::cout << "rvec: " << rvec.t() << std::endl;
             std::cout << "rvecDiff: " << rvecDiff << std::endl;
             std::cout << "trueTvec: " << trueTvec.t() << std::endl;

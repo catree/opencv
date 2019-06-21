@@ -8,6 +8,8 @@
 //TODO: debug
 #include <iostream>
 
+#define DEBUG_DISPLAY 0
+
 namespace cv {
 namespace POSIT {
 using namespace std;
@@ -122,12 +124,14 @@ static void positPlanarComputePose(const Matx41d& I, const Matx41d& J, Matx33d& 
     double K_norm = sqrt( K(0)*K(0) + K(1)*K(1) + K(2)*K(2) );
     Vec3d K_normalized(K(0)/K_norm, K(1)/K_norm, K(2)/K_norm);
 
+#if DEBUG_DISPLAY
     std::cout << "I: " << I.t() << std::endl;
     std::cout << "J: " << J.t() << std::endl;
     std::cout << "I_normalized: " << I_normalized.t() << std::endl;
     std::cout << "J_normalized: " << J_normalized.t() << std::endl;
     std::cout << "K: " << K.t() << std::endl;
     std::cout << "K_normalized: " << K_normalized.t() << std::endl;
+#endif
 
     for (int i = 0; i < 3; i++)
     {
@@ -136,7 +140,9 @@ static void positPlanarComputePose(const Matx41d& I, const Matx41d& J, Matx33d& 
         R(2,i) = K_normalized(i);
     }
 
+#if DEBUG_DISPLAY
     std::cout << "\nR:\n" << R << std::endl;
+#endif
 
     t(0,0) = I(3) * Z0;
     t(1,0) = J(3) * Z0;
@@ -178,18 +184,22 @@ static void positPlanarPoseEstimation(const vector<Point3d>& objectPointsCentere
         yprime.at<double>(i,0) = imagePoints[i].y;
     }
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "objectPointsCentered: " << objectPointsCentered.size() << std::endl;
     std::cout << "objectMatrix:\n" << objectMatrix << std::endl;
     std::cout << "xprime:\n" << xprime << std::endl;
     std::cout << "yprime:\n" << yprime << std::endl;
+#endif
 
     Matx41d I4_0 = Matx41d(Mat(objectMatrix * xprime));
     Matx41d J4_0 = Matx41d(Mat(objectMatrix * yprime));
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "I4_0: " << I4_0.t() << std::endl;
     std::cout << "J4_0: " << J4_0.t() << std::endl;
+#endif
 
     Matx31d I0(I4_0(0), I4_0(1), I4_0(2));
     Matx31d J0(J4_0(0), J4_0(1), J4_0(2));
@@ -197,9 +207,11 @@ static void positPlanarPoseEstimation(const vector<Point3d>& objectPointsCentere
     double J0sq_I0sq = J0.dot(J0) - I0.dot(I0);
     double I0J0_2 = 2 * I0.dot(J0);
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "J0sq_I0sq: " << J0sq_I0sq << std::endl;
     std::cout << "I0J0_2: " << I0J0_2 << std::endl;
+#endif
 
     double rho = 0.0, theta = 0.0;
     if (std::fabs(J0sq_I0sq) > std::numeric_limits<double>::epsilon())
@@ -216,8 +228,10 @@ static void positPlanarPoseEstimation(const vector<Point3d>& objectPointsCentere
     double costheta = cos(theta);
     double sintheta = sin(theta);
 
+#if DEBUG_DISPLAY
     //TODO:
     std::cout << "rho: " << rho << " ; theta: " << theta << std::endl;
+#endif
 
     double lambda = rho * costheta;
     double mu = rho * sintheta;
@@ -226,6 +240,7 @@ static void positPlanarPoseEstimation(const vector<Point3d>& objectPointsCentere
     Matx41d I = I4_0 + lambda*U;
     Matx41d J = J4_0 + mu*U;
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "lambda: " << lambda << std::endl;
     std::cout << "mu: " << mu << std::endl;
@@ -233,6 +248,7 @@ static void positPlanarPoseEstimation(const vector<Point3d>& objectPointsCentere
     std::cout << "J4_0: " << J4_0.t() << std::endl;
     std::cout << "I: " << I.t() << std::endl;
     std::cout << "J: " << J.t() << std::endl;
+#endif
 
     positPlanarComputePose(I, J, rotation1, translation1);
 
@@ -429,8 +445,10 @@ int positPlanar(const Mat& objectPoints_, const Mat& imagePoints_,
         objectPointsCentered[i] = pt;
     }
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "coplVectors:\n" << coplVectors << std::endl;
+#endif
 
     Mat w_, u, vt;
     SVDecomp(coplVectors, w_, u, vt, SVD::FULL_UV);
@@ -444,15 +462,19 @@ int positPlanar(const Mat& objectPoints_, const Mat& imagePoints_,
     // pseudo-inverse
     Mat coplMatrix = (u * w_reci * vt).t();
 
+#if DEBUG_DISPLAY
     //TODO: debug
     std::cout << "u:\n" << u << std::endl;
     std::cout << "w:\n" << w_ << std::endl;
     std::cout << "w_reci:\n" << w_reci << std::endl;
     std::cout << "vt:\n" << vt << std::endl;
     std::cout << "coplMatrix:\n" << coplMatrix << std::endl;
+#endif
 
     Matx41d U = vt.col(w_.rows - 1);
+#if DEBUG_DISPLAY
     std::cout << "U: " << U.t() << std::endl;
+#endif
 
     /*retourne les DEUX poses resultant de la convergence des deux branches de POSIT, sans les juger*/
     Matx33d R1, R2;
