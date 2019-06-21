@@ -47,6 +47,7 @@
 #include "p3p.h"
 #include "ap3p.h"
 #include "ippe.hpp"
+#include "posit_modern.hpp"
 #include "opencv2/calib3d/calib3d_c.h"
 
 namespace cv
@@ -927,6 +928,17 @@ int solvePnPGeneric( InputArray _opoints, InputArray _ipoints,
                 vec_tvecs.push_back(tvec1);
             }
         } catch (...) { }
+    }
+    else if (flags == SOLVEPNP_POSIT)
+    {
+        Mat undistortedPoints;
+        undistortPoints(ipoints, undistortedPoints, cameraMatrix, distCoeffs);
+
+        Matx31d rvec, tvec;
+        POSIT::posit(opoints, undistortedPoints, rvec, tvec);
+
+        vec_rvecs.push_back(Mat(rvec));
+        vec_tvecs.push_back(Mat(tvec));
     }
     /*else if (flags == SOLVEPNP_DLS)
     {

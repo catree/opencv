@@ -247,6 +247,7 @@ enum SolvePnPMethod {
                               //!<   - point 1: [ squareLength / 2,  squareLength / 2, 0]
                               //!<   - point 2: [ squareLength / 2, -squareLength / 2, 0]
                               //!<   - point 3: [-squareLength / 2, -squareLength / 2, 0]
+    SOLVEPNP_POSIT       = 8,
 #ifndef CV_DOXYGEN
     SOLVEPNP_MAX_COUNT        //!< Used for count
 #endif
